@@ -170,6 +170,9 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
   <button class="tab-btn" onclick="switchTab(2)">📈 DCA + 低接加碼</button>
   <button class="tab-btn" onclick="switchTab(3)">🔍 低接參數優化</button>
   <button class="tab-btn" onclick="switchTab(4)">⚡ 多槓桿組合</button>
+  <span style="margin-left:auto;font-size:11px;color:var(--muted);align-self:center;padding-right:4px">
+    📡 資料截至 <span class="data-latest-date">—</span>
+  </span>
 </div>
 <div id="tab1-panel">
 <div class="header">
@@ -793,6 +796,36 @@ initSelects();
 try{initDipTickers();}catch(e){console.warn('initDipTickers:',e);}
 try{renderDipLevels();}catch(e){console.warn('renderDipLevels:',e);}
 
+// ── 自動設定今日為結束日期（所有分頁），讓資料永遠用到最新 ──
+(function(){
+  const today=new Date().toISOString().split('T')[0];
+  // 找各分頁的資料最後日期（自動選用資料截止日與今日的較小值）
+  function dataLatest(tickers){
+    let last='';
+    tickers.forEach(t=>{
+      const d=ALL_DATA[t];
+      if(d&&d.dates&&d.dates.length){
+        const ld=d.dates[d.dates.length-1]; if(ld>last) last=ld;
+      }
+    });
+    return last||today;
+  }
+  const usLast  = dataLatest(['QQQ','SPY','SOXX']);
+  const twLast  = dataLatest(['0050.TW','00631L.TW']);
+  const allLast = dataLatest([...DCA_TICKERS,...LEVER_TICKERS]);
+  // 分頁一
+  const pEnd=document.getElementById('p-end'); if(pEnd) pEnd.value=allLast;
+  // 分頁二
+  const dEnd=document.getElementById('d-end'); if(dEnd) dEnd.value=allLast;
+  // 分頁三
+  const oEnd=document.getElementById('opt-end'); if(oEnd) oEnd.value=allLast;
+  // 分頁四（QQQ5.L 是最晚開始的，結束日同步）
+  const m4End=document.getElementById('m4-end'); if(m4End) m4End.value=usLast;
+  // 顯示資料截止日提示
+  const infoEls=document.querySelectorAll('.data-latest-date');
+  infoEls.forEach(el=>el.textContent=allLast);
+})();
+
 // ── 幣別自動切換 ──────────────────────────────────────────────
 const USD_TICKERS = new Set(['QQQ','QLD','TQQQ']);
 const CURRENCY_DEFAULTS = {
@@ -894,7 +927,8 @@ function runSimulation(aligned, params){
     // B) 觸發建倉（首次）
     if(!triggered&&dd<=-trigger){
       triggered=true; trigDate=date;
-      bShares=deploy/pl; bCash=reserve;
+      // 儲蓄利息計入現金池（savings 已含累積利息，扣掉部署金額即為現金儲備+利息）
+      bShares=deploy/pl; bCash=savings-deploy;
       lastRebalDate=date; lastRebalPrice=pl;
       trigEvents.push({date,dd:+(dd*100).toFixed(2),price:pl,type:'build'});
     } else if(triggered&&dd<=-trigger){
@@ -1552,6 +1586,158 @@ function calcStats2(log,trades,nDays){
     tpCount:tpTr.length,calmar};
 }
 
+// ══ 進階分析輔助函數（月報酬 / 風險指標 / 蒙地卡羅 / 熱力圖）══
+
+// 財富線建構：val + 淨永久提走（phaseIn 已回投需扣除）
+function _buildWealthLine(log,trades){
+  const stp=[...trades.filter(t=>t.type==='tp')].sort((a,b)=>a.date<b.date?-1:1);
+  const sri=[...trades.filter(t=>t.type==='reinvest')].sort((a,b)=>a.date<b.date?-1:1);
+  let cw=0,cr=0,ti=0,ri=0;
+  return log.map(r=>{
+    while(ti<stp.length&&stp[ti].date<=r.date) cw+=stp[ti++].withdrawn||0;
+    while(ri<sri.length&&sri[ri].date<=r.date) cr+=sri[ri++].amount||0;
+    return{date:r.date,w:r.val+Math.max(0,cw-cr)};
+  });
+}
+
+// 月報酬率序列（MoM 財富線）
+function calcMonthlyRets(log,trades){
+  if(!log||log.length<2) return [];
+  const wl=_buildWealthLine(log,trades);
+  const byM={};
+  wl.forEach(({date,w})=>{byM[date.slice(0,7)]=w;});
+  const yms=Object.keys(byM).sort();
+  const out=[];
+  for(let i=1;i<yms.length;i++){
+    const p=byM[yms[i-1]],c=byM[yms[i]];
+    if(p>0) out.push({ym:yms[i],ret:(c-p)/p*100});
+  }
+  return out;
+}
+
+// 逐年報酬率（財富線年底/年初）
+function calcAnnualRets(log,trades){
+  if(!log||log.length<2) return [];
+  const wl=_buildWealthLine(log,trades);
+  const byY={};
+  wl.forEach(({date,w})=>{
+    const yr=date.slice(0,4);
+    if(!byY[yr]) byY[yr]={first:w,last:w};
+    else byY[yr].last=w;
+  });
+  return Object.entries(byY).sort().map(([yr,{first,last}])=>({yr,ret:first>0?(last-first)/first*100:0}));
+}
+
+// 完整 MDD：深度 + 峰谷天數 + 回復天數
+function calcMDDFull(log,trades){
+  if(!log||log.length<2) return null;
+  const wl=_buildWealthLine(log,trades);
+  let gPk=0,gPkDate='',gPkIdx=0,mdd=0,mPkDate='',mPkIdx=0,mTrDate='',mTrIdx=0;
+  wl.forEach(({date,w},i)=>{
+    if(w>gPk){gPk=w;gPkDate=date;gPkIdx=i;}
+    const dd=gPk>0?(w-gPk)/gPk*100:0;
+    if(dd<mdd){mdd=dd;mPkDate=gPkDate;mPkIdx=gPkIdx;mTrDate=date;mTrIdx=i;}
+  });
+  if(mdd===0) return{maxDD:0,peakDate:'',troughDate:'',recoveryDate:null,p2tDays:0,t2rDays:null,recovered:false};
+  const pkVal=wl[mPkIdx].w;
+  let recDate=null;
+  for(let i=mTrIdx+1;i<wl.length;i++){if(wl[i].w>=pkVal){recDate=wl[i].date;break;}}
+  return{
+    maxDD:mdd,peakDate:mPkDate,troughDate:mTrDate,recoveryDate:recDate,
+    p2tDays:Math.round((new Date(mTrDate)-new Date(mPkDate))/864e5),
+    t2rDays:recDate?Math.round((new Date(recDate)-new Date(mTrDate))/864e5):null,
+    recovered:!!recDate
+  };
+}
+
+// 波動率 / Sharpe / Sortino / 月勝率 / 最佳最差月
+function calcRiskMetrics(mr){
+  if(!mr||mr.length<6) return null;
+  const r=mr.map(x=>x.ret/100),n=r.length;
+  const mu=r.reduce((a,b)=>a+b,0)/n;
+  const v=r.reduce((a,x)=>a+Math.pow(x-mu,2),0)/(n-1);
+  const sd=Math.sqrt(v);
+  const annVol=+(sd*Math.sqrt(12)*100).toFixed(1);
+  const rf=0.04/12;
+  const sharpe=sd>0?+(((mu-rf)/sd*Math.sqrt(12)).toFixed(3)):null;
+  const dw=r.filter(x=>x<rf);
+  const dsd=dw.length>1?Math.sqrt(dw.reduce((a,x)=>a+Math.pow(x-rf,2),0)/(dw.length-1)):0;
+  const sortino=dsd>0?+(((mu-rf)/dsd*Math.sqrt(12)).toFixed(3)):null;
+  const wins=r.filter(x=>x>0).length;
+  const bi=r.reduce((b,x,i)=>x>r[b]?i:b,0);
+  const wi=r.reduce((b,x,i)=>x<r[b]?i:b,0);
+  return{annVol,sharpe,sortino,
+    winRate:+(wins/n*100).toFixed(1),n,
+    best:+mr[bi].ret.toFixed(2),bestMonth:mr[bi].ym,
+    worst:+mr[wi].ret.toFixed(2),worstMonth:mr[wi].ym};
+}
+
+// 滾動12月報酬率（252 交易日近似）
+function calcRolling12m(log,trades){
+  const wl=_buildWealthLine(log,trades);
+  const dts=[],rts=[];
+  for(let i=252;i<wl.length;i++){
+    const w0=wl[i-252].w,w1=wl[i].w;
+    if(w0>0){dts.push(wl[i].date);rts.push(+((w1-w0)/w0*100).toFixed(2));}
+  }
+  return{dates:dts,rets:rts};
+}
+
+// 月報酬熱力圖 HTML
+function buildHeatmapHtml(mr){
+  if(!mr||!mr.length) return '<p style="color:var(--muted);font-size:12px;padding:8px">月份資料不足</p>';
+  const ML=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const by={};
+  mr.forEach(({ym,ret})=>{const[yr,mo]=ym.split('-');if(!by[yr])by[yr]={};by[yr][+mo]=ret;});
+  const yrs=Object.keys(by).sort();
+  const mx=Math.max(...mr.map(x=>Math.abs(x.ret)),0.01);
+  const cbg=r=>{if(r==null)return'background:var(--panel)';const t=Math.min(Math.abs(r)/mx,1),a=(0.12+t*0.72).toFixed(2);return r>=0?`background:rgba(63,185,80,${a})`:`background:rgba(248,81,73,${a})`;};
+  const cfg=r=>r==null?'var(--muted)':r>=0?'rgba(0,0,0,.78)':'rgba(255,255,255,.9)';
+  let h=`<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;width:100%">
+  <thead><tr>
+    <th style="padding:4px 8px;text-align:left;color:var(--muted)">年份</th>
+    ${ML.map(m=>`<th style="padding:4px 5px;text-align:center;color:var(--muted);min-width:42px">${m}</th>`).join('')}
+    <th style="padding:4px 8px;text-align:right;color:var(--muted)">全年</th>
+  </tr></thead><tbody>`;
+  yrs.forEach(yr=>{
+    const d=by[yr],vs=Object.values(d);
+    const ann=(vs.reduce((a,rv)=>a*(1+rv/100),1)-1)*100;
+    h+=`<tr><td style="padding:3px 8px;font-weight:600;color:var(--title)">${yr}</td>`;
+    for(let m=1;m<=12;m++){const rv=d[m]??null;h+=`<td style="padding:2px 3px;${cbg(rv)};border-radius:3px;text-align:center;color:${cfg(rv)};font-weight:500">${rv!=null?(rv>=0?'+':'')+rv.toFixed(1)+'%':'<span style="opacity:.25">—</span>'}</td>`;}
+    h+=`<td style="padding:3px 8px;text-align:right;font-weight:700;color:${ann>=0?'var(--green)':'var(--red)'}">${ann>=0?'+':''}${ann.toFixed(1)}%</td></tr>`;
+  });
+  h+=`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px;font-size:10px;color:var(--muted)">月均</td>`;
+  for(let m=1;m<=12;m++){
+    const vs=yrs.map(yr=>by[yr][m]).filter(v=>v!=null);
+    if(!vs.length){h+=`<td style="text-align:center;font-size:10px;color:var(--border)">—</td>`;continue;}
+    const avg=vs.reduce((a,b)=>a+b,0)/vs.length;
+    h+=`<td style="padding:2px 3px;${cbg(avg)};border-radius:3px;text-align:center;color:${cfg(avg)};font-size:10px">${avg>=0?'+':''}${avg.toFixed(1)}%</td>`;
+  }
+  h+=`<td></td></tr></tbody></table></div>`;
+  return h;
+}
+
+// 蒙地卡羅模擬（Bootstrap 重抽樣）
+function runMonteCarloSim(mr,nMonths,nSim){
+  nMonths=nMonths||120; nSim=nSim||500;
+  if(!mr||mr.length<6) return null;
+  const rets=mr.map(r=>r.ret/100),n=rets.length;
+  const paths=[];
+  for(let s=0;s<nSim;s++){
+    let w=1;const p=[1];
+    for(let m=0;m<nMonths;m++){w*=(1+rets[Math.floor(Math.random()*n)]);p.push(w);}
+    paths.push(p);
+  }
+  const xs=Array.from({length:nMonths+1},(_,i)=>i);
+  const PCT=[5,25,50,75,95];
+  const bands=PCT.map(pct=>xs.map(mi=>{
+    const v=[...paths.map(p=>p[mi])].sort((a,b)=>a-b);
+    const idx=Math.max(0,Math.min(Math.round(pct/100*(v.length-1)),v.length-1));
+    return +(v[idx]*100-100).toFixed(1);
+  }));
+  return{xs,bands,PCT,nSim,nMonths};
+}
+
 // ── 參考指數價格序列載入工具 ──
 // refTickerVal: "" 或 ticker 字串；dates/closes: 投資標的日期與收盤序列
 // 回傳與 dates 等長的收盤陣列（forward-fill 對齊）；若未選或載入失敗則回傳 closes 本身
@@ -1605,6 +1791,7 @@ function onDCADipRun(){
     tpReinvestMonths:+document.getElementById('d-tp-reinvest-months').value||12,
     tpKDPeriod:+document.getElementById('d-tp-kd-period').value||9,
     tpKDLevel:+document.getElementById('d-tp-kd-level').value||80,
+    dipLevels:[...dipLevels], // 供 renderDip 備用金分析使用
   };
 
   // 低接觸發指標從參考指數計算；停利指標（SMA/5line/KD）仍從投資標的計算
@@ -1723,6 +1910,41 @@ function renderDip(dates,closes,results,p,ind,ticker,idxTicker,idxCloses,refTick
     <div style="font-size:10px;color:var(--muted);margin-top:6px">Calmar Ratio = 年化報酬 ÷ |最大回撤|，數值越高代表每承受 1% 回撤換到越多年化報酬，不容易被大回撤嚇出場</div>
   </div>`:''}`;
 
+  // ── 進階分析計算 ──
+  const _ns={};
+  keys.forEach(k=>{
+    const mr=calcMonthlyRets(results[k].log,results[k].trades);
+    _ns[k]={mr,rm:calcRiskMetrics(mr),mddFull:calcMDDFull(results[k].log,results[k].trades),
+             annRets:calcAnnualRets(results[k].log,results[k].trades),
+             rolling:calcRolling12m(results[k].log,results[k].trades)};
+  });
+  // 熱力圖（最高CAGR策略）
+  const _hmHtml=buildHeatmapHtml(_ns[best]?_ns[best].mr:[]);
+  // 蒙地卡羅
+  const _mcMr=_ns[best]?_ns[best].mr:[];
+  const _mcResult=runMonteCarloSim(_mcMr,Math.max(120,Math.round((results[best]?results[best].log.length:2520)/252*12)));
+  // 備用金閒置成本
+  const _idleHtml=(()=>{
+    const dcaRes=Object.values(results).find(r=>['dcaDip','dipOnly'].includes(r.baseKey||r.key||''));
+    if(!dcaRes||!p.dipLevels) return '<p style="color:var(--muted);font-size:12px;padding:8px">此分析適用於含低接策略</p>';
+    const totalRes=p.dipLevels.reduce((a,lv)=>a+(+(lv.amount||0)),0);
+    if(!totalRes) return '<p style="color:var(--muted);font-size:12px;padding:8px">備用金金額為 0</p>';
+    const dipTr=dcaRes.trades.filter(t=>t.type==='dip');
+    const nMo=Math.max(1,Math.round(dates.length/21));
+    const years=dates.length/252;
+    const totalDeployed=dipTr.reduce((a,t)=>a+(t.amount||0),0);
+    const idleFrac=Math.max(0,1-Math.min(1,totalDeployed/(totalRes*Math.max(years,1))));
+    const oppCost=totalRes*idleFrac*0.04*years;
+    const bnhRes=results['dca_none']||results['dca'];
+    const exAlpha=bnhRes&&dcaRes.stats?+(dcaRes.stats.cagr-bnhRes.stats.cagr).toFixed(1):null;
+    return `<div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(175px,1fr))">
+      <div class="card"><div class="lbl">設定備用金總額</div><div class="val blue">${fmtM(totalRes)}</div><div class="sub">${p.dipLevels.length} 層低接設定</div></div>
+      <div class="card"><div class="lbl">低接觸發次數</div><div class="val">${dipTr.length}次</div><div class="sub">共 ${nMo} 個月，觸發率 ${+(dipTr.length/nMo*100).toFixed(1)}%</div></div>
+      <div class="card"><div class="lbl">估算閒置機會成本</div><div class="val orange">~${fmtM(oppCost)}</div><div class="sub">備用金閒置 × 4% 年化 × ${years.toFixed(1)} 年</div></div>
+      ${exAlpha!=null?`<div class="card"><div class="lbl">相對純DCA超額年化</div><div class="val ${exAlpha>=0?'green':'red'}">${exAlpha>=0?'+':''}${exAlpha}%</div><div class="sub">低接策略 vs 純定投 CAGR 差</div></div>`:''}
+    </div>`;
+  })();
+
   const tblRows=[
     ['累計投入',k=>fmtM(results[k].stats.totalInv)],
     ['期末市值',k=>fmtM(results[k].stats.fin)],
@@ -1732,6 +1954,14 @@ function renderDip(dates,closes,results,p,ind,ticker,idxTicker,idxCloses,refTick
     ['年化 CAGR',k=>`<span class="${cls(results[k].stats.cagr)}">${pct(results[k].stats.cagr)}</span>`],
     ['Calmar',k=>results[k].stats.calmar!=null?`<span class="${cls(results[k].stats.calmar)}">${results[k].stats.calmar}</span>`:'-'],
     ['最大回撤',k=>`<span class="red">${results[k].stats.maxDD}%</span>`],
+    ['MDD 峰→谷',k=>{const m=_ns[k]?_ns[k].mddFull:null;return m&&m.p2tDays?m.p2tDays+'天（'+m.peakDate+' → '+m.troughDate+'）':'-';}],
+    ['MDD 谷→回復',k=>{const m=_ns[k]?_ns[k].mddFull:null;if(!m||!m.maxDD)return'-';return m.recovered?m.t2rDays+'天（'+m.recoveryDate+'）':'<span class="orange">⏳ 尚未回正</span>';}],
+    ['年化波動率',k=>_ns[k]&&_ns[k].rm?_ns[k].rm.annVol+'%':'-'],
+    ['Sharpe Ratio',k=>{const rm=_ns[k]&&_ns[k].rm;if(!rm||rm.sharpe==null)return'-';const c=rm.sharpe>=1?'green':rm.sharpe>=0?'':'red';return`<span class="${c}">${rm.sharpe}</span>`;}],
+    ['Sortino Ratio',k=>{const rm=_ns[k]&&_ns[k].rm;if(!rm||rm.sortino==null)return'-';const c=rm.sortino>=1?'green':rm.sortino>=0?'':'red';return`<span class="${c}">${rm.sortino}</span>`;}],
+    ['月勝率',k=>_ns[k]&&_ns[k].rm?`${_ns[k].rm.winRate}% <span style="color:var(--muted);font-size:10px">(${_ns[k].rm.n}個月)</span>`:'-'],
+    ['最佳月份',k=>_ns[k]&&_ns[k].rm?`<span class="green">+${_ns[k].rm.best}%</span> <span style="font-size:10px;color:var(--muted)">${_ns[k].rm.bestMonth}</span>`:'-'],
+    ['最差月份',k=>_ns[k]&&_ns[k].rm?`<span class="red">${_ns[k].rm.worst}%</span> <span style="font-size:10px;color:var(--muted)">${_ns[k].rm.worstMonth}</span>`:'-'],
     ['虧損天數',k=>results[k].stats.uwDays+'天'],['最長連虧',k=>results[k].stats.maxStreak+'天'],
     ['低接次數',k=>results[k].stats.dipCount+'次'],['停利次數',k=>results[k].stats.tpCount+'次']];
   let tbl=`<div class="tbl-wrap"><table><thead><tr><th>指標</th>${keys.map(k=>`<th style="color:${results[k].color}">${results[k].label}</th>`).join('')}</tr></thead><tbody>`;
@@ -1765,8 +1995,10 @@ function renderDip(dates,closes,results,p,ind,ticker,idxTicker,idxCloses,refTick
         const entry=results[k].log[lastIdx];
         const cumInv=results[k].trades.filter(t=>['lumpsum','dca','dip'].includes(t.type)&&t.date<=date).reduce((a,t)=>a+(t.amount||0),0);
         const cumWd=results[k].trades.filter(t=>t.type==='tp'&&t.date<=date).reduce((a,t)=>a+(t.withdrawn||0),0);
-        const trueFin=entry.val+cumWd;
-        sd[k]={val:Math.round(entry.val),cumInv:Math.round(cumInv),cumWd:Math.round(cumWd),ret:cumInv>0?(trueFin-cumInv)/cumInv*100:0};
+        const cumRI=results[k].trades.filter(t=>t.type==='reinvest'&&t.date<=date).reduce((a,t)=>a+(t.amount||0),0);
+        const netCumWd=Math.max(0,cumWd-cumRI);
+        const trueFin=entry.val+netCumWd;
+        sd[k]={val:Math.round(entry.val),cumInv:Math.round(cumInv),cumWd:Math.round(netCumWd),ret:cumInv>0?(trueFin-cumInv)/cumInv*100:0};
       });
       return {yr,sd};
     }).filter(Boolean);
@@ -1822,6 +2054,25 @@ function renderDip(dates,closes,results,p,ind,ticker,idxTicker,idxCloses,refTick
   </div>
   <div class="section"><div class="section-title">策略比較表</div>${tbl}</div>
   <div class="section"><div class="section-title">逐年損益快照<span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">市值 / 累計投入 / 累積報酬率（含已抽回）</span></div>${annualSnap}</div>
+  <div class="section">
+    <div class="section-title">逐年報酬條狀圖 ＆ 滾動12月報酬率</div>
+    <div class="two-col">
+      <div class="chart-box"><div id="d-annual-bar" style="height:230px"></div></div>
+      <div class="chart-box"><div id="d-rolling12" style="height:230px"></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">月報酬熱力圖 <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">基準策略：${results[best]?results[best].label:'最高報酬'}</span></div>
+    <div class="chart-box" style="padding:12px">${_hmHtml}</div>
+  </div>
+  <div class="section">
+    <div class="section-title">蒙地卡羅模擬 <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px">Bootstrap 重抽樣 ${_mcResult?_mcResult.nSim:'—'} 次 × ${_mcResult?_mcResult.nMonths:'—'} 月，基準策略：${results[best]?results[best].label:''}</span></div>
+    ${_mcResult?`<div class="chart-box"><div id="d-mc-chart" style="height:280px"></div></div>`:'<p style="color:var(--muted);font-size:12px;padding:8px">月份資料不足，無法執行模擬</p>'}
+  </div>
+  <div class="section">
+    <div class="section-title">備用金閒置成本分析</div>
+    ${_idleHtml}
+  </div>
   <div class="section"><div class="section-title">交易紀錄</div>${tradeHtml}</div>`;
 
   const L={paper_bgcolor:BG,plot_bgcolor:BG,font:{color:TEXT,size:11},
@@ -1875,6 +2126,59 @@ function renderDip(dates,closes,results,p,ind,ticker,idxTicker,idxCloses,refTick
     return{x:results[k].log.map(r=>r.date),y:dd,name:results[k].label,
       fill:'tozeroy',fillcolor:results[k].color+'18',line:{color:results[k].color,width:1.4,dash:results[k].dash||'solid'},type:'scatter',mode:'lines'};
   }),{...Lv,yaxis:{...Lv.yaxis,ticksuffix:'%'}},C);
+
+  // ── 逐年報酬條狀圖 ──
+  const _annBarTraces=keys.filter(k=>_ns[k]&&_ns[k].annRets&&_ns[k].annRets.length>0).map(k=>({
+    x:_ns[k].annRets.map(r=>r.yr),
+    y:_ns[k].annRets.map(r=>+r.ret.toFixed(1)),
+    name:results[k].label,type:'bar',
+    marker:{color:results[k].color,opacity:0.85}
+  }));
+  if(_annBarTraces.length&&document.getElementById('d-annual-bar')){
+    Plotly.newPlot('d-annual-bar',_annBarTraces,{
+      ...Lv,barmode:'group',
+      yaxis:{...Lv.yaxis,ticksuffix:'%',zeroline:true,zerolinecolor:BORDER,zerolinewidth:1},
+      margin:{t:8,r:10,b:40,l:50},legend:{bgcolor:'transparent',font:{size:10}}
+    },C);
+  }
+
+  // ── 滾動12月報酬率 ──
+  const _r12Traces=keys.filter(k=>_ns[k]&&_ns[k].rolling&&_ns[k].rolling.dates.length>0).map(k=>({
+    x:_ns[k].rolling.dates,y:_ns[k].rolling.rets,
+    name:results[k].label,
+    line:{color:results[k].color,width:1.5,dash:results[k].dash||'solid'},type:'scatter',mode:'lines'
+  }));
+  if(_r12Traces.length&&document.getElementById('d-rolling12')){
+    Plotly.newPlot('d-rolling12',_r12Traces,{
+      ...Lv,
+      yaxis:{...Lv.yaxis,ticksuffix:'%',zeroline:true,zerolinecolor:'#f85149',zerolinewidth:1.5},
+      margin:{t:8,r:10,b:40,l:50},legend:{bgcolor:'transparent',font:{size:10}}
+    },C);
+  }
+
+  // ── 蒙地卡羅扇形圖 ──
+  if(_mcResult&&document.getElementById('d-mc-chart')){
+    const{xs,bands,nSim,nMonths}=_mcResult;
+    // 以填色帶顯示 P5–P95 分佈，P50 為主線
+    const mcTraces=[
+      {x:xs,y:bands[0],name:'P5（最差5%）',fill:'none',line:{color:'rgba(248,81,73,.55)',width:1,dash:'dash'},type:'scatter',mode:'lines'},
+      {x:xs,y:bands[1],name:'P25',fill:'tonexty',fillcolor:'rgba(248,81,73,.1)',line:{color:'transparent',width:0},type:'scatter',mode:'lines',showlegend:false},
+      {x:xs,y:bands[3],name:'P75',fill:'tonexty',fillcolor:'rgba(88,166,255,.1)',line:{color:'transparent',width:0},type:'scatter',mode:'lines',showlegend:false},
+      {x:xs,y:bands[4],name:'P95（最佳5%）',fill:'tonexty',fillcolor:'rgba(63,185,80,.1)',line:{color:'rgba(63,185,80,.55)',width:1,dash:'dash'},type:'scatter',mode:'lines'},
+      {x:xs,y:bands[2],name:'P50 中位數',fill:'none',line:{color:'#58a6ff',width:2},type:'scatter',mode:'lines'},
+      {x:[0,nMonths],y:[0,0],name:'保本線',line:{color:'rgba(255,255,255,.25)',width:1,dash:'dot'},type:'scatter',mode:'lines'}
+    ];
+    Plotly.newPlot('d-mc-chart',mcTraces,{
+      ...Lv,
+      xaxis:{...Lv.xaxis,type:'linear',title:{text:'月數',font:{size:10}}},
+      yaxis:{...Lv.yaxis,ticksuffix:'%',title:{text:'累計報酬率',font:{size:10}}},
+      legend:{bgcolor:'transparent',font:{size:10},orientation:'h',y:-0.25},
+      margin:{t:20,r:10,b:70,l:60},
+      annotations:[{xref:'paper',yref:'paper',x:0.5,y:1.02,
+        text:`${nSim} 次模擬 × ${nMonths} 個月　以歷史月報酬率 Bootstrap 重抽樣　不代表未來表現`,
+        showarrow:false,font:{size:10,color:'#8b949e'},xanchor:'center'}]
+    },C);
+  }
 }
 
 // Tab2 tickers initialized in initSelects()
@@ -2460,7 +2764,11 @@ function renderTpCompareSection(thrs,cd,logs){
     type:'scatter',mode:'lines',
     name:l.label,
     x:l.log.map(r=>r.date),
-    y:l.log.map(r=>+(r.val+(l.trades.filter(t=>t.type==='tp'&&t.date<=r.date).reduce((a,t)=>a+(t.withdrawn||0),0))).toFixed(0)),
+    y:l.log.map(r=>{
+      const cwd=l.trades.filter(t=>t.type==='tp'&&t.date<=r.date).reduce((a,t)=>a+(t.withdrawn||0),0);
+      const cri=l.trades.filter(t=>t.type==='reinvest'&&t.date<=r.date).reduce((a,t)=>a+(t.amount||0),0);
+      return +(r.val+Math.max(0,cwd-cri)).toFixed(0);
+    }),
     line:{color:l.color,width:i===0?2:1.6,dash:TP_DASH[i]||'solid'},
     hovertemplate:'%{x}<br>市值+提領: %{y:,.0f}<extra>'+l.label+'</extra>'
   }));
@@ -2983,6 +3291,15 @@ function m4RenderResult(dates, refCloses, dcaCloses, sim, stats, p, dcaTicker, r
   }
   const tradeRows = buildTradeRows(sim.trades, dcaTicker, fmt);
 
+  // ── Tab4 進階分析 ──
+  const m4Mr = calcMonthlyRets(sim.log, sim.trades);
+  const m4Rm = calcRiskMetrics(m4Mr);
+  const m4MddFull = calcMDDFull(sim.log, sim.trades);
+  const m4AnnRets = calcAnnualRets(sim.log, sim.trades);
+  const m4Rolling = calcRolling12m(sim.log, sim.trades);
+  const m4Mc = runMonteCarloSim(m4Mr, Math.max(120, Math.round(dates.length/252*12)));
+  const m4HmHtml = buildHeatmapHtml(m4Mr);
+
   area.innerHTML = `
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px">📅 ${periodStr}</div>
     ${kpiHtml}
@@ -3035,6 +3352,86 @@ function m4RenderResult(dates, refCloses, dcaCloses, sim, stats, p, dcaTicker, r
      yaxis:{gridcolor:'#21262d',zeroline:false,title:{text:'金額',font:{size:11}}},
      yaxis2:{overlaying:'y',side:'right',gridcolor:'transparent',zeroline:false,title:{text:refTicker,font:{size:11}}}},
     {displayModeBar:false,responsive:true});
+
+  // ── 追加：風險指標 / 逐年報酬 / 滾動12月 / 熱力圖 / 蒙地卡羅 ──
+  area.insertAdjacentHTML('beforeend',`
+    <details open style="margin-bottom:16px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--title);padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:8px">
+        📊 風險指標 ＆ 月勝率
+      </summary>
+      ${m4Rm?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;margin-top:8px">
+        <div class="m4-kpi"><div class="kl">年化波動率</div><div class="kv" style="color:var(--orange)">${m4Rm.annVol}%</div><div class="ks">月報酬標準差 × √12</div></div>
+        <div class="m4-kpi"><div class="kl">Sharpe Ratio</div><div class="kv" style="color:${m4Rm.sharpe>=1?'var(--green)':m4Rm.sharpe>=0?'var(--title)':'var(--red)'}">${m4Rm.sharpe??'—'}</div><div class="ks">年化超額報酬 / 波動率</div></div>
+        <div class="m4-kpi"><div class="kl">Sortino Ratio</div><div class="kv" style="color:${m4Rm.sortino>=1?'var(--green)':m4Rm.sortino>=0?'var(--title)':'var(--red)'}">${m4Rm.sortino??'—'}</div><div class="ks">超額報酬 / 下行偏差</div></div>
+        <div class="m4-kpi"><div class="kl">月勝率</div><div class="kv" style="color:var(--green)">${m4Rm.winRate}%</div><div class="ks">${m4Rm.n} 個月樣本</div></div>
+        <div class="m4-kpi"><div class="kl">最佳月份</div><div class="kv" style="color:var(--green)">+${m4Rm.best}%</div><div class="ks">${m4Rm.bestMonth}</div></div>
+        <div class="m4-kpi"><div class="kl">最差月份</div><div class="kv" style="color:var(--red)">${m4Rm.worst}%</div><div class="ks">${m4Rm.worstMonth}</div></div>
+      </div>`:'<p style="color:var(--muted);font-size:12px;padding:8px">資料不足</p>'}
+      ${m4MddFull&&m4MddFull.maxDD<0?`<div style="font-size:12px;color:var(--muted);margin-top:10px;padding:8px 12px;background:rgba(248,81,73,.05);border:1px solid rgba(248,81,73,.2);border-radius:6px">
+        📉 MDD 完整資訊：高峰 <b>${m4MddFull.peakDate}</b> → 谷底 <b>${m4MddFull.troughDate}</b>（下跌 <b style="color:var(--red)">${m4MddFull.p2tDays} 天</b>）
+        ${m4MddFull.recovered?`→ 回正 <b>${m4MddFull.recoveryDate}</b>（修復 <b style="color:var(--orange)">${m4MddFull.t2rDays} 天</b>）`:'<span style="color:var(--orange)"> → ⏳ 尚未回正</span>'}
+      </div>`:''}
+    </details>
+    <details open style="margin-bottom:16px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--title);padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:8px">
+        📈 逐年報酬 ＆ 滾動12月報酬率
+      </summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px"><div id="m4-annual-bar" style="height:210px"></div></div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px"><div id="m4-rolling12" style="height:210px"></div></div>
+      </div>
+    </details>
+    <details style="margin-bottom:16px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--title);padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:8px">
+        🗓️ 月報酬熱力圖
+      </summary>
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-top:8px">${m4HmHtml}</div>
+    </details>
+    <details style="margin-bottom:16px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--title);padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:8px">
+        🎲 蒙地卡羅模擬 <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">Bootstrap ${m4Mc?m4Mc.nSim:'—'} 次 × ${m4Mc?m4Mc.nMonths:'—'} 月</span>
+      </summary>
+      ${m4Mc?`<div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px;margin-top:8px"><div id="m4-mc-chart" style="height:260px"></div></div>`:'<p style="color:var(--muted);font-size:12px;margin-top:8px;padding:8px">月份資料不足，無法執行模擬</p>'}
+    </details>
+  `);
+
+  const _lv={paper_bgcolor:'#0d1117',plot_bgcolor:'#0d1117',font:{color:'#8b949e',size:11},margin:{t:8,r:10,b:40,l:50},legend:{bgcolor:'transparent',font:{size:10}}};
+  const _bc={displayModeBar:false,responsive:true};
+  const _xg={gridcolor:'#21262d',tickfont:{size:10}};
+  const _yg={gridcolor:'#21262d',tickfont:{size:10}};
+
+  if(m4AnnRets&&m4AnnRets.length&&document.getElementById('m4-annual-bar')){
+    Plotly.newPlot('m4-annual-bar',
+      [{x:m4AnnRets.map(r=>r.yr),y:m4AnnRets.map(r=>+r.ret.toFixed(1)),type:'bar',
+        marker:{color:m4AnnRets.map(r=>r.ret>=0?'rgba(63,185,80,.8)':'rgba(248,81,73,.8)'),line:{width:0}},
+        name:'逐年報酬'}],
+      {..._lv,yaxis:{..._yg,ticksuffix:'%',zeroline:true,zerolinecolor:'#30363d'},xaxis:_xg},_bc);
+  }
+  if(m4Rolling&&m4Rolling.dates.length&&document.getElementById('m4-rolling12')){
+    Plotly.newPlot('m4-rolling12',
+      [{x:m4Rolling.dates,y:m4Rolling.rets,type:'scatter',mode:'lines',
+        line:{color:'#f0883e',width:1.5},fill:'tozeroy',fillcolor:'rgba(240,136,62,.08)',name:'滾動12月報酬'},
+       {x:[m4Rolling.dates[0],m4Rolling.dates[m4Rolling.dates.length-1]],y:[0,0],
+        type:'scatter',mode:'lines',line:{color:'rgba(248,81,73,.5)',width:1,dash:'dot'},name:'零軸',showlegend:false}],
+      {..._lv,yaxis:{..._yg,ticksuffix:'%',zeroline:false},xaxis:_xg},_bc);
+  }
+  if(m4Mc&&document.getElementById('m4-mc-chart')){
+    const{xs,bands,nSim,nMonths}=m4Mc;
+    Plotly.newPlot('m4-mc-chart',[
+      {x:xs,y:bands[0],name:'P5（最差5%）',fill:'none',line:{color:'rgba(248,81,73,.55)',width:1,dash:'dash'},type:'scatter',mode:'lines'},
+      {x:xs,y:bands[1],name:'P25',fill:'tonexty',fillcolor:'rgba(248,81,73,.1)',line:{color:'transparent',width:0},type:'scatter',mode:'lines',showlegend:false},
+      {x:xs,y:bands[3],name:'P75',fill:'tonexty',fillcolor:'rgba(88,166,255,.1)',line:{color:'transparent',width:0},type:'scatter',mode:'lines',showlegend:false},
+      {x:xs,y:bands[4],name:'P95（最佳5%）',fill:'tonexty',fillcolor:'rgba(63,185,80,.1)',line:{color:'rgba(63,185,80,.55)',width:1,dash:'dash'},type:'scatter',mode:'lines'},
+      {x:xs,y:bands[2],name:'P50 中位數',fill:'none',line:{color:'#58a6ff',width:2},type:'scatter',mode:'lines'},
+      {x:[0,nMonths],y:[0,0],name:'保本線',line:{color:'rgba(255,255,255,.25)',width:1,dash:'dot'},type:'scatter',mode:'lines'}
+    ],{..._lv,
+      xaxis:{..._xg,type:'linear',title:{text:'月數',font:{size:10}}},
+      yaxis:{..._yg,ticksuffix:'%',title:{text:'累計報酬率',font:{size:10}}},
+      legend:{bgcolor:'transparent',font:{size:10},orientation:'h',y:-0.28},
+      margin:{t:20,r:10,b:80,l:60},
+      annotations:[{xref:'paper',yref:'paper',x:0.5,y:1.04,text:`${nSim} 次模擬 × ${nMonths} 月　Bootstrap 重抽樣`,showarrow:false,font:{size:10,color:'#8b949e'},xanchor:'center'}]
+    },_bc);
+  }
 }
 
 // ── 最優組合搜尋 ──
