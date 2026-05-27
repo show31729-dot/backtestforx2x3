@@ -170,8 +170,10 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
   <button class="tab-btn" onclick="switchTab(2)">📈 DCA + 低接加碼</button>
   <button class="tab-btn" onclick="switchTab(3)">🔍 低接參數優化</button>
   <button class="tab-btn" onclick="switchTab(4)">⚡ 多槓桿組合</button>
-  <span style="margin-left:auto;font-size:11px;color:var(--muted);align-self:center;padding-right:4px">
-    📡 資料截至 <span class="data-latest-date">—</span>
+  <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);padding-right:4px">
+    <span id="data-update-badge" class="data-latest-date">📡 資料截至 —</span>
+    <button id="data-update-btn" onclick="fetchLatestData(true)" title="手動更新至最新資料"
+      style="background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.25);border-radius:4px;color:var(--blue);font-size:10px;padding:1px 6px;cursor:pointer;line-height:1.6">🔄</button>
   </span>
 </div>
 <div id="tab1-panel">
@@ -832,7 +834,7 @@ try{renderDipLevels();}catch(e){console.warn('renderDipLevels:',e);}
   const m4End=document.getElementById('m4-end'); if(m4End) m4End.value=usLast;
   // 顯示資料截止日提示
   const infoEls=document.querySelectorAll('.data-latest-date');
-  infoEls.forEach(el=>el.textContent=allLast);
+  infoEls.forEach(el=>el.textContent='📡 資料截至 '+allLast);
 })();
 
 // ── 幣別自動切換 ──────────────────────────────────────────────
@@ -3621,8 +3623,9 @@ function m4OptimizeThresholds() {
     }
   });
 
-  // Pool of ATH % thresholds
-  const POOL = [5,8,10,12,15,18,20,25,30,35,40,45,50];
+  // Pool of ATH % thresholds（包含 5–90% 整個範圍，並強制納入使用者目前的設定值）
+  const _userThrs = m4Levels.map(l => +(l.thr||20)).filter(v => v >= 3 && v <= 95);
+  const POOL = [...new Set([5,8,10,12,15,18,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,..._userThrs])].sort((a,b)=>a-b);
   // Generate strictly-increasing combos with min gap of 3% between each level
   function genCombos(pool, n, prevVal, startI) {
     if (n===0) return [[]];
@@ -3634,7 +3637,7 @@ function m4OptimizeThresholds() {
     return res;
   }
   const thrCombos = genCombos(POOL, nLevels, 0, 0);
-  if (prog) prog.textContent = '閾值搜尋中... 共 '+thrCombos.length+' 組';
+  if (prog) prog.textContent = '🔍 閾值搜尋中... 共 '+thrCombos.length+' 組（含您設定的 '+_userThrs.map(t=>'-'+t+'%').join('/')+'）';
 
   const p = {
     dcaAmt, requireAbove: document.getElementById('m4-above-buy').checked,
@@ -3725,6 +3728,180 @@ function m4ApplyCombo(combo) {
 }
 
 try { m4InitTickers(); } catch(e) { console.warn('m4Init:', e); }
+
+// ══════════════════════════════════════════════════════════════════
+// 自動更新價格資料（Yahoo Finance → CORS Proxy → localStorage 快取）
+// ══════════════════════════════════════════════════════════════════
+const _PRICE_CACHE_KEY = 'bt_live_prices_v3';
+const _PRICE_CACHE_TTL = 6 * 3600 * 1000; // 6 小時
+
+// 找出目前嵌入資料的最後日期（ALL_DATA + EXTENDED_DATA 取最大值）
+function _embeddedLastDate() {
+  const allT = [...new Set([...DCA_TICKERS, ...LEVER_TICKERS, ...INDEX_TICKERS])];
+  let last = '';
+  allT.forEach(t => {
+    [ALL_DATA, (typeof EXTENDED_DATA !== 'undefined' ? EXTENDED_DATA : {})].forEach(src => {
+      const d = src[t];
+      if (d && d.dates && d.dates.length) {
+        const ld = d.dates[d.dates.length - 1];
+        if (ld > last) last = ld;
+      }
+    });
+  });
+  return last;
+}
+
+// 將抓回來的資料合併進 ALL_DATA 與 EXTENDED_DATA
+function _mergeIntoAllData(updates) {
+  let latestDate = '';
+  Object.entries(updates).forEach(([ticker, {dates: nd, closes: nc}]) => {
+    if (!nd || !nd.length) return;
+    [[ALL_DATA], (typeof EXTENDED_DATA !== 'undefined' ? [EXTENDED_DATA] : [])].flat().forEach(src => {
+      if (!src[ticker]) return;
+      const existLast = src[ticker].dates[src[ticker].dates.length - 1] || '';
+      const toAdd = nd.map((d, i) => [d, nc[i]]).filter(([d]) => d > existLast);
+      if (toAdd.length) {
+        src[ticker].dates  = [...src[ticker].dates,  ...toAdd.map(x => x[0])];
+        src[ticker].closes = [...src[ticker].closes, ...toAdd.map(x => x[1])];
+      }
+    });
+    const newLast = nd[nd.length - 1];
+    if (newLast > latestDate) latestDate = newLast;
+  });
+  return latestDate;
+}
+
+// 更新四個分頁的結束日期欄位
+function _syncEndDateFields() {
+  function latest(tickers) {
+    let l = '';
+    tickers.forEach(t => {
+      const d = ALL_DATA[t];
+      if (d && d.dates && d.dates.length) { const ld = d.dates[d.dates.length-1]; if (ld > l) l = ld; }
+    });
+    return l;
+  }
+  const allLast = latest([...DCA_TICKERS, ...LEVER_TICKERS]);
+  const usLast  = latest(['QQQ','SPY','SOXX']);
+  ['p-end','d-end','opt-end'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && allLast && el.value < allLast) el.value = allLast;
+  });
+  const m4El = document.getElementById('m4-end');
+  if (m4El && usLast && m4El.value < usLast) m4El.value = usLast;
+  return allLast;
+}
+
+// 用 CORS 代理從 Yahoo Finance v8 抓單一 ticker
+async function _fetchOneYahoo(ticker, period1, period2) {
+  const base = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}` +
+               `?interval=1d&period1=${period1}&period2=${period2}`;
+  const proxies = [
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+  ];
+  for (const mkProxy of proxies) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 7000);
+    try {
+      const res = await fetch(mkProxy(base), { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const json = await res.json();
+      const r = json?.chart?.result?.[0];
+      if (!r?.timestamp) continue;
+      // 優先用 adjclose，沒有才用 close
+      const rawC = r.indicators?.adjclose?.[0]?.adjclose || r.indicators?.quote?.[0]?.close;
+      if (!rawC) continue;
+      const dates = [], closes = [];
+      r.timestamp.forEach((ts, i) => {
+        const c = rawC[i];
+        if (c == null || !isFinite(c)) return;
+        // +12h 避免時區偏移導致日期跑掉
+        const dStr = new Date((ts + 43200) * 1000).toISOString().split('T')[0];
+        dates.push(dStr);
+        closes.push(Math.round(c * 100) / 100);
+      });
+      if (dates.length) return { dates, closes };
+    } catch (_) { clearTimeout(timer); }
+  }
+  return null;
+}
+
+// 主函式：可由 🔄 按鈕手動觸發，或頁面載入後自動執行
+async function fetchLatestData(manual = false) {
+  const badge = document.getElementById('data-update-badge');
+  const btn   = document.getElementById('data-update-btn');
+  if (btn) btn.disabled = true;
+
+  // ── 非手動時先嘗試讀取快取 ──
+  if (!manual) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(_PRICE_CACHE_KEY) || 'null');
+      if (cached && (Date.now() - cached.ts) < _PRICE_CACHE_TTL && cached.data) {
+        _mergeIntoAllData(cached.data);
+        const latest = _syncEndDateFields();
+        if (badge && latest) badge.textContent = `📡 ${latest} ✅（快取）`;
+        if (btn) btn.disabled = false;
+        return;
+      }
+    } catch(_) {}
+  }
+
+  const lastDate = _embeddedLastDate();
+  const today    = new Date().toISOString().split('T')[0];
+
+  if (!lastDate) {
+    if (badge) badge.textContent = '📡 無法判斷資料日期';
+    if (btn) btn.disabled = false;
+    return;
+  }
+  if (lastDate >= today) {
+    if (badge) badge.textContent = `📡 ${lastDate} ✅`;
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  if (badge) badge.textContent = '📡 更新中...';
+
+  const period1 = Math.floor(new Date(lastDate).getTime() / 1000) + 86400;
+  const period2 = Math.floor(Date.now() / 1000) + 86400;
+
+  // 跳過無法對應 Yahoo Finance 的自訂 ticker
+  const SKIP = new Set(['USD']);
+  const tickers = [...new Set([...DCA_TICKERS, ...LEVER_TICKERS, ...INDEX_TICKERS])].filter(t => !SKIP.has(t));
+
+  // 分批並行（每批 4 個，減少代理壓力）
+  const updates = {};
+  const BATCH = 4;
+  for (let i = 0; i < tickers.length; i += BATCH) {
+    const batch = tickers.slice(i, i + BATCH);
+    const res = await Promise.allSettled(batch.map(t => _fetchOneYahoo(t, period1, period2)));
+    res.forEach((r, idx) => {
+      if (r.status === 'fulfilled' && r.value && r.value.dates.length) {
+        updates[batch[idx]] = r.value;
+      }
+    });
+  }
+
+  const nUpdated = Object.keys(updates).length;
+  if (!nUpdated) {
+    if (badge) badge.textContent = `📡 ${lastDate}（CORS 封鎖，無法自動更新）`;
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  const newLatest = _mergeIntoAllData(updates);
+  const displayDate = _syncEndDateFields() || newLatest || lastDate;
+  if (badge) badge.textContent = `📡 ${displayDate} ✅（已更新 ${nUpdated} 支）`;
+
+  // 存快取
+  try { localStorage.setItem(_PRICE_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: updates })); } catch(_) {}
+  if (btn) btn.disabled = false;
+}
+
+// 頁面載入後 1 秒自動執行一次
+setTimeout(() => { try { fetchLatestData(false); } catch(e) { console.warn('autoFetch:', e); } }, 1000);
 
 </script>
 </body>
