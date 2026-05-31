@@ -190,10 +190,12 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
   <div class="field">
     <label>📈 定投標的（每月買入，長期持有）</label>
     <select id="p-dca-ticker"></select>
+    <div id="p-dca-warn"></div>
   </div>
   <div class="field">
     <label>⚡ 槓桿 ETF（50/50 子彈帳戶）</label>
     <select id="p-lev-ticker"></select>
+    <div id="p-lev-warn"></div>
   </div>
   <div class="field">
     <label>📡 觸發指數（監控從高點回落幅度）</label>
@@ -375,6 +377,7 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
   <div class="field">
     <label>投資標的（買入此標的）</label>
     <select id="d-ticker"></select>
+    <div id="d-ticker-warn"></div>
   </div>
   <div class="field">
     <label>低接觸發參考指數 <span style="color:var(--muted);font-weight:400">（ATH/指標計算基準，空白＝與投資標的相同）</span></label>
@@ -431,6 +434,41 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
       <span>現價需高於上次買入價才可再加碼</span>
     </div>
   </div>
+
+  <!-- ══ 低接觸發頻率速查工具 ══ -->
+  <details id="d-trig-tool" style="margin-top:4px;margin-bottom:4px">
+    <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--blue);padding:8px 0;user-select:none">
+      📊 歷史觸發頻率分析（點擊展開）
+    </summary>
+    <div style="background:rgba(88,166,255,.05);border:1px solid rgba(88,166,255,.18);border-radius:8px;padding:10px 12px;margin-top:4px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6">
+        根據上方選擇的「投資標的」與「日期範圍」，統計各閾值在歷史上觸發幾次。
+        <span style="color:rgba(88,166,255,.7)">切換標的時閾值建議會自動更新。</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <label style="font-size:11px;color:var(--muted)">觸發閾值（% 跌幅，逗號分隔）</label>
+            <button onclick="(function(){const lvs=dipLevels.filter(l=>l.type==='ath').map(l=>l.athPct||20);const el=document.getElementById('d-ta-levels');if(el&&lvs.length)el.value=lvs.join(',');})()"
+              style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:1px 7px;cursor:pointer;font-size:10px">
+              ↑ 從低接設定同步
+            </button>
+          </div>
+          <input type="text" id="d-ta-levels" placeholder="例：10,20,30,50,70" value="10,20,30,50,70"
+            style="width:100%;background:#0d1117;border:1px solid var(--border);border-radius:6px;color:var(--title);padding:6px 9px;font-size:12px;box-sizing:border-box">
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="flex:1">
+            <label style="font-size:11px;color:var(--muted)">冷卻天數</label>
+            <input type="number" id="d-ta-cd" value="30" min="1" max="365"
+              style="width:100%;background:#0d1117;border:1px solid var(--border);border-radius:6px;color:var(--title);padding:6px 9px;font-size:12px;margin-top:3px">
+          </div>
+          <button onclick="runTrigAnalysis()" style="background:rgba(88,166,255,.15);border:1px solid var(--blue);border-radius:6px;color:var(--blue);padding:7px 14px;cursor:pointer;font-weight:700;font-size:12px;white-space:nowrap;flex-shrink:0">📊 分析</button>
+        </div>
+      </div>
+      <div id="d-ta-result" style="margin-top:10px"></div>
+    </div>
+  </details>
 
   <div class="ph2">停利條件</div>
   <div class="field">
@@ -537,6 +575,7 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
   <div class="ph2">投資標的與時間</div>
   <div class="field"><label>投資標的（買入此標的）</label>
     <select id="opt-ticker" style="width:100%;background:#0d1117;border:1px solid var(--border);border-radius:6px;color:var(--title);padding:8px 10px;font-size:13px"></select>
+    <div id="opt-ticker-warn"></div>
   </div>
   <div class="field">
     <label>低接觸發參考指數 <span style="color:var(--muted);font-weight:400">（ATH 計算基準，空白＝與投資標的相同）</span></label>
@@ -712,10 +751,10 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
     <div class="field" style="flex:1"><label>結束日期</label><input type="date" id="m4-end" value="2026-05-13"></div>
   </div>
   <div class="ph2">定期定額（DCA）</div>
-  <div class="field"><label>定投標的</label><select id="m4-dca-ticker" onchange="m4UpdateRefOptions()"></select></div>
+  <div class="field"><label>定投標的</label><select id="m4-dca-ticker" onchange="m4UpdateRefOptions()"></select><div id="m4-dca-warn"></div></div>
   <div class="field"><label>每月定投金額（0 = 不定投）</label><input type="number" id="m4-dca-amt" value="10000" step="1000" min="0"></div>
   <div class="ph2">參考指數（低接觸發基準）</div>
-  <div class="field"><label>以此標的的ATH跌幅觸發低接</label><select id="m4-ref-ticker"></select></div>
+  <div class="field"><label>以此標的的ATH跌幅觸發低接</label><select id="m4-ref-ticker"></select><div id="m4-ref-warn"></div></div>
   <div class="ph2">低接層次（各層可選不同標的）</div>
   <div id="m4-levels-container"></div>
   <button type="button" class="add-level-btn" onclick="m4AddLevel()">＋ 新增低接層次</button>
@@ -795,6 +834,56 @@ const EXTENDED_DATA = {"SPY":{"dates":["1993-01-29","1993-02-01","1993-02-02","1
 const LABELS        = {"0050.TW": "0050 元大台灣50", "006208.TW": "006208 富邦台50", "00662.TW": "00662 富邦NASDAQ", "QQQ": "QQQ Invesco NASDAQ-100", "00631L.TW": "00631L 元大台灣50正2", "00670L.TW": "00670L 富邦NASDAQ正2", "QLD": "QLD ProShares NASDAQ-100 2x", "TQQQ": "TQQQ ProShares NASDAQ-100 3x", "^TWII": "^TWII 台灣加權指數", "^NDX": "^NDX NASDAQ-100","^SOX":"^SOX 費城半導體指數（SOX）","SOXX":"SOXX iShares 半導體 ETF","USD":"USD ProShares Ultra 半導體 2x","SOXL":"SOXL Direxion 半導體 3x","^GSPC":"^GSPC S&P 500 指數","SPY":"SPY SPDR S&P 500 ETF","SSO":"SSO ProShares Ultra S&P 500 2x","UPRO":"UPRO ProShares UltraPro S&P 500 3x","QQQ5.L":"QQQ5.L Leverage Shares 5x Long QQQ (LSE)"};
 const DCA_TICKERS   = ["0050.TW", "006208.TW", "00662.TW", "QQQ", "SOXX", "SPY"];
 const LEVER_TICKERS = ["00631L.TW", "00670L.TW", "QLD", "TQQQ", "QQQ5.L", "USD", "SOXL", "SSO", "UPRO"];
+// 標的詮釋資料：槓桿倍數（所有標的均有資料，hasData 由執行時動態確認）
+const TICKER_INFO = {
+  '0050.TW':   {lev:1, name:'1×'},
+  '006208.TW': {lev:1, name:'1×'},
+  '00662.TW':  {lev:1, name:'1× NASDAQ TW'},
+  'QQQ':       {lev:1, name:'1×'},
+  'SOXX':      {lev:1, name:'1×'},
+  'SPY':       {lev:1, name:'1×'},
+  '00631L.TW': {lev:2, name:'2× 台50 TW'},
+  '00670L.TW': {lev:2, name:'2× NASDAQ TW'},
+  'QLD':       {lev:2, name:'2×'},
+  'SSO':       {lev:2, name:'2×'},
+  'USD':       {lev:2, name:'2× 半導體'},
+  'TQQQ':      {lev:3, name:'3×'},
+  'SOXL':      {lev:3, name:'3× 半導體'},
+  'UPRO':      {lev:3, name:'3×'},
+  'QQQ5.L':    {lev:5, name:'5×'},
+};
+
+// ── 執行時動態判斷標的是否有資料 ─────────────────────────────
+function hasTickerData(ticker) {
+  if (!ticker) return false;
+  const ext = typeof EXTENDED_DATA !== 'undefined' ? EXTENDED_DATA : {};
+  return !!(ext[ticker] || ALL_DATA[ticker]);
+}
+
+// 在任意 <select> 元素上標記無資料的選項，並綁定選擇警示
+function markSelectNoData(selEl, warnElId) {
+  if (!selEl) return;
+  Array.from(selEl.options).forEach(o => {
+    if (!o.value || o.value === '') return;
+    if (!hasTickerData(o.value)) {
+      if (!o.textContent.includes('⚠️')) o.textContent = '⚠️ ' + o.textContent;
+      o.style.color = '#f0883e';
+    }
+  });
+  // 選擇時即時顯示警告
+  const showWarn = () => {
+    const warnEl = document.getElementById(warnElId);
+    if (!warnEl) return;
+    const val = selEl.value;
+    if (!val || hasTickerData(val)) { warnEl.style.display = 'none'; warnEl.textContent = ''; return; }
+    const info = TICKER_INFO[val] || {};
+    const altText = info.altNote ? info.altNote : `${val} 在資料庫中沒有歷史價格，執行回測將無法取得資料。`;
+    warnEl.style.cssText = 'display:block;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:6px;padding:7px 10px;font-size:11px;color:var(--red);margin-top:4px;line-height:1.7';
+    warnEl.innerHTML = `⚠️ <b>${val}</b> 無資料：${altText}${info.alt ? `　<button onclick="(function(){document.getElementById('${selEl.id}').value='${info.alt}';document.getElementById('${selEl.id}').dispatchEvent(new Event('change'));document.getElementById('${warnElId}').style.display='none';})()" style="background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);border-radius:4px;color:var(--green);padding:2px 8px;cursor:pointer;font-size:11px;font-weight:700;margin-left:6px">改用 ${info.alt}</button>` : ''}`;
+  };
+  selEl.addEventListener('change', showWarn);
+  showWarn(); // 初始化時也執行一次
+}
 const INDEX_TICKERS = ["^TWII", "^NDX", "^SOX", "^GSPC"];
 const DEFAULT_IDX   = {"00631L.TW": "^TWII", "00670L.TW": "^NDX", "QLD": "^NDX", "TQQQ": "^NDX", "USD": "^SOX", "SOXL": "^SOX", "SSO": "^GSPC", "UPRO": "^GSPC","QQQ5.L":"^NDX"};
 
@@ -838,6 +927,11 @@ function initSelects(){
     updateCurrency();
   });
   document.getElementById('p-dca-ticker').addEventListener('change', ()=>updateCurrency());
+  // 標記無資料的選項並綁定選擇警示
+  setTimeout(()=>{
+    markSelectNoData(document.getElementById('p-dca-ticker'), 'p-dca-warn');
+    markSelectNoData(document.getElementById('p-lev-ticker'), 'p-lev-warn');
+  }, 100);
 }
 const LEVEL_COLORS=['#f85149','#f0883e','#d29922','#3fb950','#58a6ff','#d2a8ff'];
 let dipLevels=[{type:'ath',athPct:20,amount:50000,cooldownDays:180}];
@@ -948,12 +1042,25 @@ function runSimulation(aligned, params){
     return mDiff>=rebalPeriod;
   }
 
+  // ── 現金耗損追蹤 ──
+  let minCashB=Infinity, minCashDate='', rebalSkipped=0, deepUwDays50=0, deepUwDays70=0;
+
   function doRebalance(pl, date, ratioBefore){
     const vl=bShares*pl, tot=vl+bCash;
     const target=tot*0.5, diff=target-vl;
     if(diff>0&&bCash>=diff){
       bShares+=diff/pl; bCash-=diff;
       rebalLog.push({date,action:'buy',amount:Math.round(diff),price:pl,ratioBefore:+(ratioBefore*100).toFixed(1)});
+    } else if(diff>0&&bCash>0){
+      // 現金不足以完整再平衡 → 部分買入（全數投入剩餘現金）
+      const partialAmt=bCash;
+      bShares+=partialAmt/pl; bCash=0;
+      rebalLog.push({date,action:'partialBuy',amount:Math.round(partialAmt),needed:Math.round(diff),price:pl,ratioBefore:+(ratioBefore*100).toFixed(1)});
+      rebalSkipped++;
+    } else if(diff>0&&bCash<=0){
+      // 現金已耗盡，完全無法再平衡買入
+      rebalLog.push({date,action:'skip',needed:Math.round(diff),available:0,price:pl,ratioBefore:+(ratioBefore*100).toFixed(1)});
+      rebalSkipped++;
     } else if(diff<0){
       bShares+=diff/pl; bCash-=diff;
       rebalLog.push({date,action:'sell',amount:Math.round(Math.abs(diff)),price:pl,ratioBefore:+(ratioBefore*100).toFixed(1)});
@@ -1006,6 +1113,13 @@ function runSimulation(aligned, params){
 
     const valA=aShares*pd;
     const valB=triggered?(bShares*pl+bCash):savings;
+    // 追蹤現金底部（只在觸發後計算）
+    if(triggered){
+      if(bCash<minCashB){minCashB=bCash;minCashDate=date;}
+      const bLoss=(valB-initialB)/initialB*100;
+      if(bLoss<=-50) deepUwDays50++;
+      if(bLoss<=-70) deepUwDays70++;
+    }
     log.push({
       date, dd:+(dd*100).toFixed(2),
       pIdx:+pi.toFixed(2),
@@ -1015,12 +1129,17 @@ function runSimulation(aligned, params){
       triggered,
     });
   }
-  return {log,trigEvents,rebalLog,triggered,trigDate,initialB};
+  const minCashBFinal = minCashB===Infinity ? initialB : minCashB;
+  return {log,trigEvents,rebalLog,triggered,trigDate,initialB,
+          minCashB:Math.round(minCashBFinal), minCashDate,
+          minCashPct:initialB>0?+(minCashBFinal/initialB*100).toFixed(1):100,
+          rebalSkipped, deepUwDays50, deepUwDays70};
 }
 
 // ── 統計 ─────────────────────────────────────────────────────
 function calcStats(res, params){
-  const {log,trigEvents,rebalLog,triggered,trigDate,initialB}=res;
+  const {log,trigEvents,rebalLog,triggered,trigDate,initialB,
+         minCashB,minCashDate,minCashPct,rebalSkipped,deepUwDays50,deepUwDays70}=res;
   const last=log[log.length-1];
   const finalA=last.valA, invA=last.investedA, finalB=last.valB;
   const gainA=finalA-invA, retA=+(gainA/invA*100).toFixed(1);
@@ -1065,7 +1184,9 @@ function calcStats(res, params){
           uwDays,uwStarts,maxLoss:Math.round(maxLoss),
           months:Math.round(invA/params.dcaAmount),
           nDays:log.length,combDd,annual,
-          start:log[0].date,end:log[log.length-1].date};
+          start:log[0].date,end:log[log.length-1].date,
+          // 新增：現金健康度指標
+          minCashB,minCashDate,minCashPct,rebalSkipped,deepUwDays50,deepUwDays70};
 }
 
 // ── 渲染 ─────────────────────────────────────────────────────
@@ -1076,7 +1197,28 @@ function renderResults(log, stats, trigEvents, rebalLog, params, names){
     ? `報酬率觸發 ±${params.rebalReturnPct}%`
     : (['月','季','半年','年'][[1,3,6,12].indexOf(params.rebalPeriod)]||'定期')+'再平衡';
 
+  // ── 警告橫幅 ──────────────────────────────────────────────
+  const _warns=[];
+  if(!stats.triggered){
+    _warns.push({lvl:'warn',msg:'⚠️ 在回測期間內觸發指數<b>從未達到設定跌幅</b>，子彈帳戶全程以活存利率計算，未實際建倉。請縮短日期範圍或降低觸發跌幅。'});
+  }
+  if(stats.rebalSkipped>0){
+    _warns.push({lvl:'danger',msg:`🚨 <b>再平衡 ${stats.rebalSkipped} 次因現金不足而無法完整執行</b>（部分買入或完全略過），子彈帳戶比率長期偏離 50/50。現金最低點：${fmt(stats.minCashB)}（佔初始 ${stats.minCashPct}%，${stats.minCashDate}）`});
+  }
+  if(stats.minCashPct<15&&stats.triggered){
+    _warns.push({lvl:'danger',msg:`🚨 <b>子彈帳戶現金曾跌至初始金額的 ${stats.minCashPct}%</b>（最低 ${fmt(stats.minCashB)}，${stats.minCashDate}）——在此期間若 ETF 繼續大跌，已<b>幾乎沒有可用現金</b>執行買入再平衡。`});
+  } else if(stats.minCashPct<30&&stats.triggered){
+    _warns.push({lvl:'warn',msg:`⚠️ 子彈帳戶現金曾跌至初始金額的 ${stats.minCashPct}%（最低 ${fmt(stats.minCashB)}，${stats.minCashDate}），再平衡買入能力受限。`});
+  }
+  if(stats.deepUwDays70>0){
+    _warns.push({lvl:'danger',msg:`🚨 子彈帳戶有 <b>${stats.deepUwDays70} 天</b>處於虧損超過 70% 的狀態——若此期間贖回，將面臨<b>嚴重永久性虧損</b>。`});
+  } else if(stats.deepUwDays50>0){
+    _warns.push({lvl:'warn',msg:`⚠️ 子彈帳戶有 <b>${stats.deepUwDays50} 天</b>處於帳面虧損超過 50% 的狀態，心理壓力極大，請確認您能承受此幅度的浮虧。`});
+  }
+  const _warnHtml=_warns.map(w=>`<div style="background:${w.lvl==='danger'?'rgba(248,81,73,.12)':'rgba(240,136,62,.10)'};border:1px solid ${w.lvl==='danger'?'rgba(248,81,73,.4)':'rgba(240,136,62,.35)'};border-radius:7px;padding:10px 14px;font-size:12px;line-height:1.7;color:${w.lvl==='danger'?'var(--red)':'var(--orange)'}">${w.msg}</div>`).join('');
+
   document.getElementById('results').innerHTML=`
+    ${_warnHtml?`<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">${_warnHtml}</div>`:''}
     <div class="section">
       <div class="section-title">
         策略績效摘要
@@ -1135,6 +1277,16 @@ function renderResults(log, stats, trigEvents, rebalLog, params, names){
         </details>
       </div>
     </div>
+    <div class="section">
+      <div class="section-title">子彈帳戶現金餘額走勢
+        <small style="font-size:10px;color:var(--muted);margin-left:8px">現金越低代表越多資金押注在槓桿 ETF，風險越集中</small>
+      </div>
+      <div class="chart-box"><div id="rc-cash" style="height:200px"></div></div>
+    </div>
+    <details style="margin-top:12px;border:1px solid rgba(240,136,62,.3);border-radius:8px;padding:10px 14px;background:rgba(240,136,62,.05)">
+      <summary style="font-size:12px;font-weight:700;color:var(--orange);cursor:pointer">⚠️ 回測模擬的重要限制與提示（展開查看）</summary>
+      ${_simulationDisclaimer()}
+    </details>
   `;
 
   // Cards
@@ -1287,10 +1439,36 @@ function renderResults(log, stats, trigEvents, rebalLog, params, names){
 
   // Rebal Table
   const rt=document.getElementById('rc-rebal');
-  rebalLog.forEach(r=>{const b=r.action==='buy'?'<span class="badge badge-buy">買入</span>':'<span class="badge badge-sell">賣出</span>';
-    const cls=r.action==='buy'?'up':'dn';
-    rt.innerHTML+=`<tr><td>${r.date}</td><td>${b}</td>
-      <td class="${cls}">${fmt(r.amount)}</td><td>${r.price.toFixed(2)}</td><td>${r.ratioBefore}%</td></tr>`;});
+  rebalLog.forEach(r=>{
+    let badge, cls, amtStr;
+    if(r.action==='buy')         { badge='<span class="badge badge-buy">買入</span>';  cls='up'; amtStr=fmt(r.amount); }
+    else if(r.action==='sell')   { badge='<span class="badge badge-sell">賣出</span>'; cls='dn'; amtStr=fmt(r.amount); }
+    else if(r.action==='partialBuy'){ badge='<span style="background:rgba(240,136,62,.25);color:var(--orange);padding:1px 5px;border-radius:3px;font-size:10px">⚠️ 部分買入</span>'; cls='up'; amtStr=`${fmt(r.amount)} <small style="color:var(--muted)">(需 ${fmt(r.needed)}，現金不足)</small>`; }
+    else                         { badge='<span style="background:rgba(248,81,73,.25);color:var(--red);padding:1px 5px;border-radius:3px;font-size:10px">🚨 略過</span>'; cls='dn'; amtStr=`<small style="color:var(--red)">現金耗盡，需 ${fmt(r.needed)}</small>`; }
+    rt.innerHTML+=`<tr><td>${r.date}</td><td>${badge}</td>
+      <td class="${cls}">${amtStr}</td><td>${r.price?.toFixed(2)||'-'}</td><td>${r.ratioBefore}%</td></tr>`;
+  });
+  if(!rebalLog.length) rt.innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--muted)">尚未有再平衡操作</td></tr>`;
+
+  // Cash Balance Chart
+  const trig_log = log.filter(r=>r.triggered);
+  if(trig_log.length){
+    const cashDates=trig_log.map(r=>r.date), cashVals=trig_log.map(r=>r.cashB);
+    const cashPct=trig_log.map(r=>+(r.cashB/stats.initialB*100).toFixed(1));
+    Plotly.newPlot('rc-cash',[
+      {x:cashDates,y:cashVals,name:'現金餘額',fill:'tozeroy',fillcolor:'rgba(88,166,255,.1)',
+       line:{color:BLUE,width:2},hovertemplate:'%{x}<br>現金 %{y:,.0f}<extra></extra>'},
+      {x:cashDates,y:cashPct.map(()=>stats.initialB*0.3),name:'30% 警戒線',line:{color:ORANGE,width:1,dash:'dot'},hoverinfo:'none'},
+    ],{
+      ...baseLayout,
+      yaxis:{...baseLayout.yaxis,tickformat:',.0f',title:{text:currentCurrency,font:{color:MUTED}}},
+      shapes:[{type:'line',xref:'paper',yref:'y',x0:0,x1:1,
+               y0:stats.initialB*0.3,y1:stats.initialB*0.3,
+               line:{color:ORANGE,width:1,dash:'dot'}}],
+      annotations:[{xref:'paper',yref:'y',x:0.02,y:stats.initialB*0.3,
+                    text:'30%警戒',showarrow:false,font:{size:9,color:ORANGE}}],
+    },{responsive:true,displayModeBar:false});
+  }
 }
 
 // ── 執行回測 ─────────────────────────────────────────────────
@@ -1311,7 +1489,12 @@ function onRun(){
     rebalMode,
     savingsAPY:    +document.getElementById('p-savings').value,
   };
-  for(const t of [dcaT,levT,idxT]){if(!ALL_DATA[t]){alert(`找不到 ${t} 資料`);return;}}
+  // 驗證所有標的都有資料
+  const _missingT=[dcaT,levT,idxT].filter(t=>!hasTickerData(t));
+  if(_missingT.length){
+    alert(`⚠️ 找不到以下標的的資料：${_missingT.join('、')}\n請確認標的選擇後重新執行。`);
+    return;
+  }
   const btn=document.querySelector('.run-btn');
   btn.textContent='計算中…';btn.disabled=true;
   setTimeout(()=>{
@@ -1356,8 +1539,26 @@ function initDipTickers(){
   const el = document.getElementById('d-ticker');
   all.forEach(t=>{
     const o = document.createElement('option');
-    o.value = t; o.textContent = LABELS[t]||t; el.appendChild(o);
+    const info = TICKER_INFO[t];
+    const levTag = info ? ` [${info.name}]` : '';
+    o.value = t;
+    o.textContent = (LABELS[t]||t) + levTag;
+    el.appendChild(o);
   });
+  // 當選擇標的時，自動更新觸發分析建議閾值
+  el.addEventListener('change', () => {
+    const t = el.value;
+    const info = TICKER_INFO[t];
+    const levEl = document.getElementById('d-ta-levels');
+    if (levEl && info) {
+      if      (info.lev >= 5) levEl.value = '30,50,70,80,90,95';
+      else if (info.lev >= 3) levEl.value = '20,30,40,50,60,70,80,90';
+      else if (info.lev >= 2) levEl.value = '10,20,30,40,50,60,70,80';
+      else                    levEl.value = '10,15,20,30,40,50';
+    }
+  });
+  // 標記無資料選項 + 警示
+  setTimeout(()=>markSelectNoData(el, 'd-ticker-warn'), 100);
 }
 
 // ── 指標計算 ──
@@ -1809,7 +2010,10 @@ function onDCADipRun(){
   saveDipLevelValues();
   const ticker=document.getElementById('d-ticker').value;
   const raw=(typeof EXTENDED_DATA!=='undefined'&&EXTENDED_DATA[ticker])||ALL_DATA[ticker];
-  if(!raw){alert('無此標的資料');return;}
+  if(!raw){
+    document.getElementById('d-results').innerHTML=`<div style="background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:8px;padding:16px 18px;margin:20px;font-size:13px;color:var(--red);line-height:2">🚨 找不到 <b>${ticker}</b> 的資料，請確認標的選擇。</div>`;
+    return;
+  }
   const sd=new Date(document.getElementById('d-start').value);
   const ed=new Date(document.getElementById('d-end').value);
   const filt=raw.dates.map((d,i)=>({d,c:raw.closes[i]})).filter(x=>{const dt=new Date(x.d);return dt>=sd&&dt<=ed;});
@@ -2229,6 +2433,12 @@ function renderDip(dates,closes,results,p,ind,ticker,idxTicker,idxCloses,refTick
         showarrow:false,font:{size:10,color:'#8b949e'},xanchor:'center'}]
     },C);
   }
+  // 通用免責聲明
+  document.getElementById('d-results').insertAdjacentHTML('beforeend',`
+    <details style="margin-top:16px;border:1px solid rgba(240,136,62,.3);border-radius:8px;padding:10px 14px;background:rgba(240,136,62,.05)">
+      <summary style="font-size:12px;font-weight:700;color:var(--orange);cursor:pointer">⚠️ 回測模擬的重要限制與提示（展開查看）</summary>
+      ${_simulationDisclaimer()}
+    </details>`);
 }
 
 // Tab2 tickers initialized in initSelects()
@@ -2246,10 +2456,12 @@ function initOptTickers(){
   if(!el) return;
   all.forEach(t=>{
     const o=document.createElement('option');
-    o.value=t; o.textContent=LABELS[t]||t;
+    const info=TICKER_INFO[t];
+    o.value=t; o.textContent=(LABELS[t]||t)+(info?` [${info.name}]`:'');
     if(t==='SOXL') o.selected=true;
     el.appendChild(o);
   });
+  setTimeout(()=>markSelectNoData(el, 'opt-ticker-warn'), 100);
 }
 try{initOptTickers();}catch(e){console.warn('initOptTickers:',e);}
 
@@ -2660,6 +2872,15 @@ function renderOptResults(thresholds,cooldowns,grid,allResults,metric,ticker,dca
       yaxis:{...LH.yaxis,title:{text:'冷卻天數',font:{size:11}}}
     },{displayModeBar:false,responsive:true});
   }
+  // 通用免責聲明
+  const _optDisclWrap = document.getElementById('opt-results');
+  if(_optDisclWrap){
+    _optDisclWrap.insertAdjacentHTML('beforeend',`
+      <details style="margin-top:16px;border:1px solid rgba(240,136,62,.3);border-radius:8px;padding:10px 14px;background:rgba(240,136,62,.05)">
+        <summary style="font-size:12px;font-weight:700;color:var(--orange);cursor:pointer">⚠️ 回測模擬的重要限制與提示（展開查看）</summary>
+        ${_simulationDisclaimer()}
+      </details>`);
+  }
 }
 
 function applyOptToTab2(ticker,thr,cd,dcaAmt,dipAmtsJson,startDate,endDate,tpAction,tpRetPct){
@@ -2923,12 +3144,13 @@ function simStrategyMulti(dates, dcaCloses, refCloses, dipBuyClosesArr, p, dipLv
     // Dip buys
     dipLvs.forEach((lv, li) => {
       if (!lv.amount) return;
-      const lvCfg = {type:'ath', athPct:lv.thr, amount:lv.amount, cooldownDays:lv.cooldownDays||30};
+      const _cd = Math.max(1, lv.cooldownDays || 30); // 最少 1 天，避免每日無限觸發
+      const lvCfg = {type:'ath', athPct:lv.thr, amount:lv.amount, cooldownDays:_cd};
       if (!checkLevelTrigger(i, refCloses, lvCfg, ind)) return;
       const e = cdState[li];
       if (e) {
         const ddays = Math.round((new Date(date) - new Date(e.date)) / 86400000);
-        if (ddays < (lv.cooldownDays || 0)) return;
+        if (ddays < _cd) return;
         if (p.requireAbove && refPrice <= e.price) return;
       }
       const buyPrice = dipBuyClosesArr[li][i];
@@ -3004,10 +3226,15 @@ function m4InitTickers() {
   [dcaSel, refSel].forEach(sel => {
     M4_ALL_TICKERS.forEach(t => {
       const o = document.createElement('option');
-      o.value = t; o.textContent = (LABELS[t] || t); sel.appendChild(o);
+      const info = TICKER_INFO[t];
+      o.value = t; o.textContent = (LABELS[t]||t) + (info?` [${info.name}]`:''); sel.appendChild(o);
     });
   });
   m4Preset('qqq');
+  setTimeout(()=>{
+    markSelectNoData(dcaSel, 'm4-dca-warn');
+    markSelectNoData(refSel, 'm4-ref-warn');
+  }, 100);
 }
 
 function m4UpdateRefOptions() {
@@ -3059,7 +3286,11 @@ function m4RenderLevels() {
   const f = M4_FAMILIES[m4CurrentFamily] || M4_FAMILIES.qqq;
   const allT = [...M4_ALL_TICKERS];
   c.innerHTML = m4Levels.map((lv, li) => {
-    const opts = allT.map(t => `<option value="${t}"${t===lv.buyTicker?' selected':''}>${LABELS[t]||t}</option>`).join('');
+    const opts = allT.map(t => {
+      const noData = !hasTickerData(t);
+      const label = (noData ? '⚠️ ' : '') + (LABELS[t]||t);
+      return `<option value="${t}"${t===lv.buyTicker?' selected':''}${noData?' style="color:#f0883e"':''}>${label}</option>`;
+    }).join('');
     return `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:8px;padding:8px;background:rgba(255,255,255,.03);border-radius:6px;border:1px solid var(--border)">
       <span style="font-size:11px;color:var(--blue);width:20px;font-weight:700">L${li+1}</span>
       <div style="flex:1;min-width:140px">
@@ -3080,7 +3311,7 @@ function m4RenderLevels() {
       <div style="width:60px">
         <div style="font-size:10px;color:var(--muted);margin-bottom:3px">冷卻天</div>
         <input type="number" style="width:100%;background:#0d1117;border:1px solid var(--border);border-radius:4px;color:var(--title);padding:4px 6px;font-size:12px"
-          value="${lv.cooldownDays}" min="0" oninput="m4Levels[${li}].cooldownDays=+this.value">
+          value="${Math.max(1,lv.cooldownDays||30)}" min="1" oninput="m4Levels[${li}].cooldownDays=Math.max(1,+this.value||30)">
       </div>
       <button onclick="m4Levels.splice(${li},1);m4RenderLevels()" style="background:transparent;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:2px 4px;align-self:flex-end">✕</button>
     </div>`;
@@ -3513,6 +3744,12 @@ function m4RenderResult(dates, refCloses, dcaCloses, sim, stats, p, dcaTicker, r
       annotations:[{xref:'paper',yref:'paper',x:0.5,y:1.04,text:`${nSim} 次模擬 × ${nMonths} 月　Bootstrap 重抽樣`,showarrow:false,font:{size:10,color:'#8b949e'},xanchor:'center'}]
     },_bc);
   }
+  // 通用免責聲明
+  area.insertAdjacentHTML('beforeend',`
+    <details style="margin-top:16px;border:1px solid rgba(240,136,62,.3);border-radius:8px;padding:10px 14px;background:rgba(240,136,62,.05)">
+      <summary style="font-size:12px;font-weight:700;color:var(--orange);cursor:pointer">⚠️ 回測模擬的重要限制與提示（展開查看）</summary>
+      ${_simulationDisclaimer()}
+    </details>`);
 }
 
 // ── 最優組合搜尋 ──
@@ -3667,21 +3904,35 @@ function m4OptimizeThresholds() {
     }
   });
 
-  // Pool of ATH % thresholds（包含 5–90% 整個範圍，並強制納入使用者目前的設定值）
-  const _userThrs = m4Levels.map(l => +(l.thr||20)).filter(v => v >= 3 && v <= 95);
-  const POOL = [...new Set([5,8,10,12,15,18,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,..._userThrs])].sort((a,b)=>a-b);
-  // Generate strictly-increasing combos with min gap of 3% between each level
+  // 計算參考指數在測試期間的最大 ATH 回撤（限制 pool 上限，避免永遠不觸發的閾值）
+  const _refMaxDD = Math.abs(Math.min(...dATHDrawdown(refCloses)));  // 正值，例如 42.3 代表最大跌 42.3%
+  // Pool：最小 10%（避免 5%/8% 這種「幾乎每天觸發」的無意義閾值）
+  // 上限用參考指數最大回撤 + 20%（保留緩衝）和使用者設定值的最大值取較大者
+  const _poolMax = Math.min(95, Math.max(_refMaxDD + 20, 50));
+  const _userThrs = m4Levels.map(l => +(l.thr||20)).filter(v => v >= 10 && v <= 95);
+  const _stdPool  = [10,12,15,18,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90].filter(v => v <= _poolMax);
+  const POOL = [...new Set([..._stdPool, ..._userThrs])].sort((a,b)=>a-b);
+
+  // 層間最小間距 5%（避免 [10, 85, 90] 這種畸形分佈，至少間距要合理）
+  const _minGap = 5;
+  // Generate strictly-increasing combos
   function genCombos(pool, n, prevVal, startI) {
     if (n===0) return [[]];
     const res = [];
     for (let i=startI; i<pool.length; i++) {
-      if (pool[i] < prevVal + 3) continue;
+      if (pool[i] < prevVal + _minGap) continue;
       genCombos(pool, n-1, pool[i], i+1).forEach(s => res.push([pool[i],...s]));
     }
     return res;
   }
   const thrCombos = genCombos(POOL, nLevels, 0, 0);
-  if (prog) prog.textContent = '🔍 閾值搜尋中... 共 '+thrCombos.length+' 組（含您設定的 '+_userThrs.map(t=>'-'+t+'%').join('/')+'）';
+  // 警告：若有閾值超過參考指數歷史最大回撤，該閾值在測試期間永遠不會觸發
+  const _neverFire = _userThrs.filter(t => t > _refMaxDD);
+  const _warnNote  = _neverFire.length
+    ? `⚠️ 您設定的 ${_neverFire.map(t=>'-'+t+'%').join('/')} 超過 ${refTicker} 歷史最大回撤 -${_refMaxDD.toFixed(0)}%，這些閾值在回測期間永遠不會觸發！`
+    : '';
+  if (prog) prog.textContent = '🔍 閾值搜尋中... 共 '+thrCombos.length+' 組（POOL 上限 -'+_poolMax.toFixed(0)+'%）';
+  if (_warnNote && optResult) optResult.innerHTML = `<div style="background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--red);margin-bottom:8px">${_warnNote}</div>`;
 
   const p = {
     dcaAmt, requireAbove: document.getElementById('m4-above-buy').checked,
@@ -3720,11 +3971,12 @@ function m4OptimizeThresholds() {
     if (!best) { if(prog) prog.textContent='❌ 無有效結果'; return; }
     if (prog) prog.textContent = `✅ 閾值搜尋完成，${thrCombos.length} 組已評估（優化目標：${_thrMetricNames[_thrMetric]}）`;
 
-    // Suggestion text
+    // Suggestion text（加入參考指數最大回撤提示）
     const _thrMBest = best.calmar!=null ? best.calmar.toFixed(3) : 'N/A';
     const suggest = '🏆 建議：' + best.thrs.map((t,i)=>'L'+(i+1)+'=-'+t+'%').join('、') +
       `　${_thrMetricNames[_thrMetric]}: `+( _thrMetric==='calmar'?_thrMBest:_thrMVal(best).toFixed(2)) +
-      '　平均水下: '+best.avgUW+'天';
+      '　平均水下: '+best.avgUW+'天' +
+      `　｜${refTicker} 歷史最大回撤：-${_refMaxDD.toFixed(1)}%`;
 
     const rows = top10.map((r,idx) => {
       const thrStr = r.thrs.map((t,i)=>'L'+(i+1)+':-'+t+'%').join(' ');
@@ -3743,7 +3995,11 @@ function m4OptimizeThresholds() {
     optResult.innerHTML = `
       <div style="background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.6">
         ${suggest}
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">※ 成本平滑建議：保持每層冷卻天數 ≥ 30 天、各層觸發間距 ≥ 5%，可降低集中買在單一低點的風險</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">
+          ※ 成本平滑建議：保持每層冷卻天數 ≥ 30 天、各層觸發間距 ≥ 5%，可降低集中買在單一低點的風險<br>
+          ※ <b style="color:var(--orange)">${refTicker}</b> 在回測期間最大 ATH 回撤為 <b style="color:var(--red)">-${_refMaxDD.toFixed(1)}%</b>
+          — 超過此值的閾值在此期間<b style="color:var(--red)">永遠不會觸發</b>，對結果無貢獻
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -3779,6 +4035,255 @@ function m4ApplyCombo(combo) {
 }
 
 try { m4InitTickers(); } catch(e) { console.warn('m4Init:', e); }
+
+// ══════════════════════════════════════════════════════════════════
+// 分頁二：低接觸發頻率分析工具
+// ══════════════════════════════════════════════════════════════════
+function runTrigAnalysis() {
+  const ticker   = document.getElementById('d-ticker')?.value;
+  const refVal   = document.getElementById('d-ref-ticker')?.value || '';
+  const start    = document.getElementById('d-start')?.value;
+  const end      = document.getElementById('d-end')?.value;
+  const levStr   = document.getElementById('d-ta-levels')?.value || '10,20,30,50,70';
+  const cd       = Math.max(1, +(document.getElementById('d-ta-cd')?.value) || 30);
+  const resultEl = document.getElementById('d-ta-result');
+
+  if (!ticker) { if(resultEl) resultEl.innerHTML='<p style="color:var(--muted);font-size:12px">請先選擇投資標的</p>'; return; }
+
+  const info = TICKER_INFO[ticker] || {lev:1, name:''};
+
+  // ── 執行時動態確認標的是否有資料 ──
+  if (!hasTickerData(ticker)) {
+    if(resultEl) resultEl.innerHTML = `
+      <div style="background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.9;color:var(--red)">
+        🚨 <b>${ticker}</b> 在資料庫中找不到歷史價格，無法分析。<br>
+        請確認標的選擇，或先按 🔄 更新資料。
+      </div>`;
+    return;
+  }
+
+  // 解析閾值
+  const levels = [...new Set(levStr.split(',').map(s=>+s.trim()).filter(v=>v>0&&v<=99))].sort((a,b)=>a-b);
+  if (!levels.length) { if(resultEl) resultEl.innerHTML='<p style="color:var(--red);font-size:12px">閾值格式錯誤，請輸入逗號分隔的數字，例如：10,20,30</p>'; return; }
+
+  // 取得價格資料（優先用 refVal 計算 ATH；若無 refVal 則用投資標的本身）
+  const refTicker = refVal || ticker;
+  const refRaw = (typeof EXTENDED_DATA!=='undefined'&&EXTENDED_DATA[refTicker]) || ALL_DATA[refTicker];
+  if (!refRaw) {
+    if(resultEl) resultEl.innerHTML=`<div style="background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--red)">
+      🚨 找不到「${refTicker}」的資料。請確認：<br>
+      1. 投資標的選擇是否正確？<br>
+      2. 參考指數是否有對應資料？<br>
+      可用標的：${[...DCA_TICKERS,...LEVER_TICKERS].filter(t=>{const r=(typeof EXTENDED_DATA!=='undefined'&&EXTENDED_DATA[t])||ALL_DATA[t];return !!r;}).join('、')}
+    </div>`;
+    return;
+  }
+
+  const sd = new Date(start), ed = new Date(end);
+  const filt = refRaw.dates.map((d,i)=>({d, c:refRaw.closes[i]}))
+    .filter(x=>{ const dt=new Date(x.d); return dt>=sd&&dt<=ed; });
+  if (filt.length < 20) { if(resultEl) resultEl.innerHTML='<p style="color:var(--red);font-size:12px">資料不足（需至少 20 個交易日）</p>'; return; }
+
+  const dates  = filt.map(x=>x.d);
+  const closes = filt.map(x=>x.c);
+
+  // 計算 ATH 回撤序列
+  const athDD = dATHDrawdown(closes);   // 每日對 ATH 的跌幅（負值，例如 -23.5 代表跌 23.5%）
+  const maxDD = Math.abs(Math.min(...athDD));  // 期間最大 ATH 回撤
+
+  // 統計各閾值觸發次數（含冷卻）
+  const stats = levels.map(lv => {
+    let count = 0, lastTrigDate = null, firstTrigDate = null;
+    let daysBelow = 0, totalGap = 0;
+    const trigDates = [];
+
+    for (let i = 0; i < dates.length; i++) {
+      if (athDD[i] <= -lv) {
+        daysBelow++;
+        const daysSinceLast = lastTrigDate
+          ? Math.round((new Date(dates[i]) - new Date(lastTrigDate)) / 86400000)
+          : Infinity;
+        if (daysSinceLast >= cd) {
+          count++;
+          if (!firstTrigDate) firstTrigDate = dates[i];
+          if (lastTrigDate) totalGap += daysSinceLast;
+          lastTrigDate = dates[i];
+          trigDates.push(dates[i]);
+        }
+      }
+    }
+    const avgGap = count > 1 ? Math.round(totalGap / (count - 1)) : null;
+    const pctBelow = +(daysBelow / dates.length * 100).toFixed(1);
+    const triggered = lv <= maxDD;  // 此閾值是否在期間內曾被突破
+    return { lv, count, daysBelow, pctBelow, firstTrigDate, lastTrigDate, avgGap, triggered, trigDates };
+  });
+
+  // ── 渲染結果 ──
+  const fmtDate = d => d ? d.slice(0,7) : '—';
+  const ntDays  = dates.length;
+  const years   = +(ntDays / 252).toFixed(1);
+
+  const rows = stats.map(s => {
+    const freq = s.count > 0 ? `約每 ${Math.round(ntDays/252*12/s.count)} 個月一次` : '未觸發';
+    const warnStyle = !s.triggered ? 'color:var(--red);font-weight:700' : s.count===0?'color:var(--muted)':'';
+    const neverNote = !s.triggered
+      ? `<br><span style="font-size:10px;color:var(--red)">⚠️ 期間最大回撤僅 -${maxDD.toFixed(1)}%，此閾值<b>從未觸發</b></span>`
+      : '';
+    return `<tr style="${warnStyle}">
+      <td style="padding:4px 8px;text-align:center;font-weight:700;color:${s.triggered?'var(--orange)':'var(--muted)'}">-${s.lv}%</td>
+      <td style="padding:4px 8px;text-align:center">
+        ${s.triggered ? `<b style="font-size:14px;color:${s.count>0?'var(--green)':'var(--muted)'}">${s.count}</b> 次${neverNote}` : `<span style="color:var(--red)">0 次${neverNote}</span>`}
+      </td>
+      <td style="padding:4px 8px;text-align:center;color:var(--muted)">${s.count>0?freq:'—'}</td>
+      <td style="padding:4px 8px;text-align:center;color:var(--muted)">${s.count>1?s.avgGap+'天':'—'}</td>
+      <td style="padding:4px 8px;text-align:center;color:var(--muted)">${s.pctBelow}%</td>
+      <td style="padding:4px 8px;text-align:center;font-size:11px;color:var(--muted)">${fmtDate(s.firstTrigDate)}</td>
+    </tr>`;
+  }).join('');
+
+  const ddColor = maxDD >= 70 ? 'var(--red)' : maxDD >= 40 ? 'var(--orange)' : 'var(--green)';
+  const refNote = refVal && refVal !== ticker
+    ? `<span style="color:var(--blue)">（ATH 以 ${refVal} 計算）</span>`
+    : '';
+
+  // 超過最大回撤的閾值個數
+  const impossibleLevels = levels.filter(lv => lv > maxDD);
+  const impossibleBanner = impossibleLevels.length > 0
+    ? `<div style="background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.35);border-radius:7px;padding:9px 12px;margin-bottom:8px;font-size:12px;line-height:1.8;color:var(--red)">
+        🚨 <b>閾值超出歷史範圍：${impossibleLevels.map(v=>'-'+v+'%').join('、')} 在此期間永遠不會觸發</b><br>
+        <span style="color:var(--text)">
+          <b>${ticker}</b> 在 ${start}～${end} 期間，ATH 最大回撤為 <b>-${maxDD.toFixed(1)}%</b>，
+          超過此值的閾值出現「0次」是<b>正確的</b>，不是程式錯誤。
+          ${info.lev >= 3 ? `<br>⚠️ 提醒：您選擇的是 <b style="color:var(--orange)">${info.lev}× 槓桿 ETF</b>，即使標的曾達 -${maxDD.toFixed(0)}% 以上，也表示操作風險極高。` :
+            info.lev === 2 ? `<br>💡 提醒：您選擇的是 <b style="color:var(--orange)">${info.lev}× 槓桿 ETF</b>，${ticker} 的歷史最大 ATH 回撤為 -${maxDD.toFixed(1)}%。如要分析更極端的回撤，請考慮對應的 3× 產品（如 SOXL/TQQQ/UPRO）。` : ''}
+        </span>
+      </div>`
+    : '';
+
+  const levTag = info.lev > 1 ? `　<span style="background:rgba(240,136,62,.2);color:var(--orange);padding:1px 7px;border-radius:4px;font-weight:700">${info.lev}× 槓桿</span>` : '';
+  const dataNote = `<span style="font-size:10px;color:var(--muted)">（資料使用還原價 adjclose ✅）</span>`;
+
+  resultEl.innerHTML = `
+    ${impossibleBanner}
+    <div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:7px;padding:8px 12px;margin-bottom:8px;font-size:12px;line-height:2">
+      📌 <b>${ticker}</b>${levTag} ${refNote}　${start} ～ ${end}（${ntDays} 交易日 / ${years} 年）${dataNote}<br>
+      📉 <b>期間最大 ATH 回撤：</b><span style="color:${ddColor};font-size:16px;font-weight:800">-${maxDD.toFixed(2)}%</span>
+      　<span style="color:var(--muted);font-size:11px">有效分析範圍：-1% ～ -${maxDD.toFixed(0)}%</span>
+      　冷卻天數：${cd} 天
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--muted);font-size:11px">
+            <th style="padding:4px 8px">閾值</th>
+            <th style="padding:4px 8px">觸發次數</th>
+            <th style="padding:4px 8px">觸發頻率</th>
+            <th style="padding:4px 8px">平均間隔</th>
+            <th style="padding:4px 8px">低於閾值天數占比</th>
+            <th style="padding:4px 8px">首次觸發</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div id="d-ta-chart" style="height:220px;margin-top:10px"></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6">
+      ※ 觸發邏輯：距上次觸發 ≥ 冷卻天數後，再次跌破閾值才計為一次；與分頁二的 ATH 跌幅觸發邏輯相同<br>
+      ※ 「低於閾值天數占比」：不受冷卻影響，反映標的實際在閾值以下的時間比例
+    </div>`;
+
+  // ── Plotly ATH 回撤圖 ──
+  setTimeout(() => {
+    const Lv = {
+      paper_bgcolor:'#161b22', plot_bgcolor:'#0d1117',
+      font:{color:'#c9d1d9',size:10},
+      margin:{t:16,r:16,b:36,l:52},
+      hovermode:'x unified',
+      xaxis:{gridcolor:'#30363d',tickfont:{color:'#8b949e'}},
+      yaxis:{gridcolor:'#30363d',tickfont:{color:'#8b949e'},ticksuffix:'%',range:[-(maxDD*1.1+5), 2]},
+      legend:{bgcolor:'transparent',font:{size:9},orientation:'h',y:-0.22},
+      shapes:[], annotations:[],
+    };
+    // 各閾值水平線
+    const levelColors = ['#f85149','#f0883e','#d29922','#3fb950','#58a6ff','#d2a8ff'];
+    levels.forEach((lv, idx) => {
+      const col = levelColors[idx % levelColors.length];
+      Lv.shapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:-lv,y1:-lv,
+                      line:{color:col,width:1,dash:'dot'},opacity:.7});
+      Lv.annotations.push({xref:'paper',yref:'y',x:1.01,y:-lv,text:`-${lv}%`,
+                            showarrow:false,font:{size:9,color:col},xanchor:'left'});
+    });
+
+    const traces = [{
+      x:dates, y:athDD, name:'ATH 回撤%',
+      fill:'tozeroy', fillcolor:'rgba(248,81,73,.12)',
+      line:{color:'#f85149',width:1.5},
+      hovertemplate:'%{x}<br>ATH 回撤 %{y:.1f}%<extra></extra>',
+    }];
+
+    // 各閾值觸發標記
+    stats.forEach((s, idx) => {
+      if (!s.trigDates.length) return;
+      const col = levelColors[idx % levelColors.length];
+      const yMarks = s.trigDates.map(d => {
+        const i = dates.indexOf(d);
+        return i >= 0 ? athDD[i] : -s.lv;
+      });
+      traces.push({
+        x: s.trigDates, y: yMarks,
+        mode:'markers', name:`-${s.lv}% 觸發`,
+        marker:{symbol:'circle', size:6, color:col, line:{color:'#fff',width:1}},
+        hovertemplate:`%{x}<br>-${s.lv}% 觸發<extra></extra>`,
+      });
+    });
+
+    Plotly.newPlot('d-ta-chart', traces, Lv, {responsive:true,displayModeBar:false});
+  }, 50);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 通用：回測模擬限制與免責聲明（所有分頁共用）
+// ══════════════════════════════════════════════════════════════════
+function _simulationDisclaimer() {
+  return `<div style="font-size:11px;line-height:1.9;color:var(--muted);margin-top:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+
+      <div>
+        <div style="color:var(--text);font-weight:700;margin-bottom:4px">❌ 未計算的真實成本</div>
+        <div>• <b>交易手續費</b>：每筆買賣約 0.1%–0.3%（依券商而異），頻繁再平衡者影響顯著</div>
+        <div>• <b>稅費</b>：股利所得稅、資本利得稅（部分國家適用），台灣證交稅 0.3%</div>
+        <div>• <b>匯率風險</b>：持有美元 ETF（QQQ/TQQQ/SOXL 等）時，TWD/USD 匯率波動會影響實際報酬，工具未納入匯率換算</div>
+        <div>• <b>借貸成本</b>：若使用信用帳戶或融資，須額外計算利息支出</div>
+      </div>
+
+      <div>
+        <div style="color:var(--text);font-weight:700;margin-bottom:4px">⚡ 槓桿 ETF 特殊風險</div>
+        <div>• <b>波動衰減（Volatility Decay）</b>：槓桿 ETF 每日重設槓桿，震盪行情下複利報酬低於「指數漲幅 × N 倍」；工具使用真實歷史收盤價，此效應<b>已反映在價格中</b></div>
+        <div>• <b>極端跌幅下的資本損耗</b>：3× ETF 跌幅可達 90%+ （如 TQQQ 2022 年跌 ~90%、SOXL 跌 ~94%），即使完整執行 50/50 再平衡，子彈帳戶仍可能縮水至初始的 20% 以下</div>
+        <div>• <b>追蹤誤差</b>：實際 ETF 報酬可能偏離指數 × N 倍，尤其在市場流動性差時</div>
+      </div>
+
+      <div style="margin-top:8px">
+        <div style="color:var(--text);font-weight:700;margin-bottom:4px">🔄 再平衡機制說明</div>
+        <div>• 分頁一的 50/50 再平衡：數學上現金永遠足以執行買入，但<b>ETF 大跌時買入的份數等比增加</b>，若 ETF 持續下跌，總資產可能大幅縮水</div>
+        <div>• 分頁二/四的低接加碼：每次低接固定金額消耗備用資金，<b>若設定冷卻天數過短或閾值過低，可能快速耗盡備用金</b>，後續觸發時無資金可用</div>
+      </div>
+
+      <div style="margin-top:8px">
+        <div style="color:var(--text);font-weight:700;margin-bottom:4px">📊 回測方法論限制</div>
+        <div>• <b>過度擬合</b>：最優化掃描的參數對歷史資料擬合效果好，但未來市場環境改變時可能失效</div>
+        <div>• <b>回看偏差（Look-ahead bias）</b>：本工具未使用未來資料，但用戶在選擇回測時間範圍時可能無意間迴避了對策略不利的時期</div>
+        <div>• <b>股息處理</b>：使用調整後收盤價（adjusted close），已將股息計入再投資報酬</div>
+        <div>• <b>流動性假設</b>：假設任何時間都能以收盤價成交，實際操作中可能遭遇流動性不足或滑點</div>
+      </div>
+
+    </div>
+    <div style="margin-top:10px;padding:8px 12px;background:rgba(255,255,255,.04);border-radius:6px;border:1px solid var(--border);color:var(--muted);font-size:11px">
+      🔔 <b>本工具僅供學習與研究用途，不構成任何投資建議。</b>
+      過去績效不代表未來表現。實際投資前請充分評估個人風險承受能力，必要時諮詢專業顧問。
+    </div>
+  </div>`;
+}
 
 // ══════════════════════════════════════════════════════════════════
 // 分頁一：掃描模式切換
