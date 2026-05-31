@@ -317,6 +317,25 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
 
   <button class="run-btn" onclick="onRun()">▶ 執行回測</button>
 
+  <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+    <div class="ph2" style="margin-bottom:8px">🔍 一鍵自動最優化</div>
+    <div class="mode-tab-row" style="margin-bottom:6px">
+      <div class="mode-tab active" id="p1-mode-all" onclick="setP1OptMode('all')">🌐 全方面</div>
+      <div class="mode-tab" id="p1-mode-fixed" onclick="setP1OptMode('fixed')">📌 固定標的</div>
+    </div>
+    <div id="p1-mode-desc" style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;padding:6px 8px;background:rgba(88,166,255,.05);border-radius:5px;border:1px solid rgba(88,166,255,.12)">
+      🌐 掃描所有定投 × 槓桿 ETF × 觸發跌幅組合，找出全局最優配置
+    </div>
+    <select id="p1-opt-metric" style="width:100%;background:#0d1117;border:1px solid var(--border);border-radius:6px;color:var(--title);padding:7px 10px;font-size:12px;margin-bottom:6px">
+      <option value="calmar">📊 Calmar Ratio 風報比（推薦）</option>
+      <option value="cagr">📈 最高年化報酬 CAGR</option>
+      <option value="ret">💰 最高總報酬率</option>
+      <option value="minDD">🛡️ 最小最大回撤</option>
+    </select>
+    <button onclick="onTab1Optimize()" style="width:100%;background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.3);border-radius:6px;color:var(--blue);padding:9px;cursor:pointer;font-weight:600;font-size:13px">🔍 開始最優化掃描</button>
+    <div id="p1-opt-prog" style="font-size:11px;color:var(--muted);margin-top:5px;min-height:16px"></div>
+  </div>
+
   <details style="margin-top:10px">
     <summary>📖 策略完整說明</summary>
     <div class="info-note" style="margin-top:6px">
@@ -486,6 +505,10 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
   </div>
 
   <button class="run-btn" onclick="onDCADipRun()">▶ 執行比較回測</button>
+  <div style="display:flex;gap:6px;margin-top:8px">
+    <button onclick="tab2QuickOpt('fixed')" style="flex:1;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:6px;color:var(--blue);padding:8px 4px;cursor:pointer;font-weight:600;font-size:11px" title="保留目前選擇的標的，只掃描最優閾值與冷卻天數">📌 固定標的<br>→ Tab 3</button>
+    <button onclick="tab2QuickOpt('all')" style="flex:1;background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.3);border-radius:6px;color:var(--blue);padding:8px 4px;cursor:pointer;font-weight:600;font-size:11px" title="掃描所有可用標的，找出全局最優組合">🌐 全方面<br>→ Tab 3</button>
+  </div>
 </div>
 
 <!-- ══ 右側結果 ══ -->
@@ -651,7 +674,10 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
     </div>
   </div>
 
-  <button class="run-btn" onclick="runOptSweep()">🔍 執行參數掃描</button>
+  <div style="display:flex;flex-direction:column;gap:7px">
+    <button class="run-btn" onclick="runOptSweep()" title="固定目前標的，掃描最優閾值 × 冷卻天數（含4種停利比較）">📌 固定標的掃描</button>
+    <button onclick="runTab3FullSweep()" style="width:100%;background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.3);border-radius:6px;color:var(--blue);padding:9px;cursor:pointer;font-weight:600;font-size:13px" title="掃描所有標的 × 閾值 × 冷卻，找出全局最優配置">🌐 全方面掃描（所有標的）</button>
+  </div>
 </div>
 
 <!-- ── 右側結果 ── -->
@@ -726,10 +752,23 @@ details summary{cursor:pointer;color:var(--blue);font-size:12px;padding:6px 0;us
       </span>
     </label>
   </div>
-  <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+  <div style="margin-top:12px">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">最優化目標</div>
+    <select id="m4-opt-metric" style="width:100%;background:#0d1117;border:1px solid var(--border);border-radius:6px;color:var(--title);padding:7px 10px;font-size:12px">
+      <option value="calmar">📊 Calmar Ratio 風報比（推薦）</option>
+      <option value="cagr">📈 最高年化報酬 CAGR</option>
+      <option value="ret">💰 最高總報酬率</option>
+      <option value="minDD">🛡️ 最小最大回撤</option>
+    </select>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.8;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:5px;border:1px solid var(--border)">
+    🌐 <b style="color:var(--blue)">最優組合</b>：掃描所有標的搭配（固定閾值）<br>
+    📌 <b style="color:var(--orange)">最優閾值</b>：固定目前標的，掃描最優 ATH 觸發%
+  </div>
+  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
     <button class="run-btn" onclick="m4Run()" style="flex:1">▶ 執行回測</button>
-    <button class="opt-btn" onclick="m4Optimize()" style="flex:1;padding:10px 6px">🔍 最優組合</button>
-    <button class="m4-thr-btn" onclick="m4OptimizeThresholds()" style="flex:1">🎯 最優閾值</button>
+    <button class="opt-btn" onclick="m4Optimize()" style="flex:1;padding:10px 6px" title="🌐 全方面：掃描所有標的搭配">🌐 最優組合</button>
+    <button class="m4-thr-btn" onclick="m4OptimizeThresholds()" style="flex:1" title="📌 固定標的：掃描最優 ATH 觸發%">📌 最優閾值</button>
   </div>
   <div id="m4-progress" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:16px"></div>
 </div><!-- /param-panel -->
@@ -3546,15 +3585,20 @@ function m4Optimize() {
       return {combo, calmar, cagr, cagr_actual:cagr, ret:s?s.ret:-999, maxDD:s?s.maxDD:0, dipCount:s?s.dipCount:0, tpCount:s?s.tpCount:0, trueFin:s?s.trueFin:0, totalInv:s?s.totalInv:0};
     });
 
-    // Sort by Calmar (desc), fallback CAGR
-    results.sort((a, b) => {
-      const ca = a.calmar ?? -999, cb = b.calmar ?? -999;
-      if (ca !== cb) return cb - ca;
-      return b.cagr - a.cagr;
-    });
+    // Sort by selected metric
+    const _m4Metric = document.getElementById('m4-opt-metric')?.value || 'calmar';
+    const _m4MetricNames = {calmar:'Calmar',cagr:'CAGR',ret:'總報酬%',minDD:'MaxDD'};
+    function _m4MVal(r) {
+      if (_m4Metric==='calmar') return r.calmar??-999;
+      if (_m4Metric==='cagr')   return r.cagr??-999;
+      if (_m4Metric==='ret')    return r.ret??-999;
+      if (_m4Metric==='minDD')  return -Math.abs(r.maxDD??0);
+      return r.calmar??-999;
+    }
+    results.sort((a, b) => _m4MVal(b) - _m4MVal(a));
 
     const top20 = results.slice(0, 20);
-    if (prog) prog.textContent = `✅ 搜尋完成，${total} 組已評估`;
+    if (prog) prog.textContent = `✅ 搜尋完成，${total} 組已評估（優化目標：${_m4MetricNames[_m4Metric]}）`;
 
     const fmt = n => n == null ? 'N/A' : (n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n.toFixed(0));
     const rows = top20.map((r, idx) => {
@@ -3656,23 +3700,30 @@ function m4OptimizeThresholds() {
       if (!st) return null;
       const uwPs = m4CalcUnderwaterPeriods(sim.log);
       const avgUW = uwPs.length ? Math.round(uwPs.reduce((a,p)=>a+p.days,0)/uwPs.length) : 0;
-      return {thrs, calmar:st.calmar, cagr:st.cagr, maxDD:st.maxDD, dipCount:st.dipCount, trueFin:st.trueFin, avgUW, uwCount:uwPs.length};
+      return {thrs, calmar:st.calmar, cagr:st.cagr, ret:st.ret, maxDD:st.maxDD, dipCount:st.dipCount, trueFin:st.trueFin, avgUW, uwCount:uwPs.length};
     }).filter(Boolean);
 
-    // Sort by Calmar desc, then CAGR
-    results.sort((a,b) => {
-      const ca=a.calmar??-999, cb=b.calmar??-999;
-      return ca!==cb ? cb-ca : b.cagr-a.cagr;
-    });
+    // Sort by selected metric
+    const _thrMetric = document.getElementById('m4-opt-metric')?.value || 'calmar';
+    const _thrMetricNames = {calmar:'Calmar Ratio',cagr:'CAGR',ret:'總報酬%',minDD:'最小回撤'};
+    function _thrMVal(r) {
+      if (_thrMetric==='calmar') return r.calmar??-999;
+      if (_thrMetric==='cagr')   return r.cagr??-999;
+      if (_thrMetric==='ret')    return r.ret??-999;
+      if (_thrMetric==='minDD')  return -Math.abs(r.maxDD??0);
+      return r.calmar??-999;
+    }
+    results.sort((a,b) => _thrMVal(b) - _thrMVal(a));
 
     const top10 = results.slice(0,10);
     const best = top10[0];
     if (!best) { if(prog) prog.textContent='❌ 無有效結果'; return; }
-    if (prog) prog.textContent = '✅ 閾值搜尋完成，'+thrCombos.length+' 組已評估';
+    if (prog) prog.textContent = `✅ 閾值搜尋完成，${thrCombos.length} 組已評估（優化目標：${_thrMetricNames[_thrMetric]}）`;
 
     // Suggestion text
+    const _thrMBest = best.calmar!=null ? best.calmar.toFixed(3) : 'N/A';
     const suggest = '🏆 建議：' + best.thrs.map((t,i)=>'L'+(i+1)+'=-'+t+'%').join('、') +
-      '　Calmar: '+( best.calmar!=null?best.calmar.toFixed(3):'N/A') +
+      `　${_thrMetricNames[_thrMetric]}: `+( _thrMetric==='calmar'?_thrMBest:_thrMVal(best).toFixed(2)) +
       '　平均水下: '+best.avgUW+'天';
 
     const rows = top10.map((r,idx) => {
@@ -3728,6 +3779,435 @@ function m4ApplyCombo(combo) {
 }
 
 try { m4InitTickers(); } catch(e) { console.warn('m4Init:', e); }
+
+// ══════════════════════════════════════════════════════════════════
+// 分頁一：掃描模式切換
+// ══════════════════════════════════════════════════════════════════
+let _p1OptMode = 'all';
+function setP1OptMode(m) {
+  _p1OptMode = m;
+  document.getElementById('p1-mode-all').classList.toggle('active', m === 'all');
+  document.getElementById('p1-mode-fixed').classList.toggle('active', m === 'fixed');
+  const desc = document.getElementById('p1-mode-desc');
+  if (desc) desc.innerHTML = m === 'all'
+    ? '🌐 掃描所有定投 × 槓桿 ETF × 觸發跌幅組合，找出全局最優配置'
+    : '📌 保留目前選擇的定投標的和槓桿 ETF，只掃描最優觸發跌幅（7個候選值）';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 分頁一：一鍵最優化（定投標的 × 槓桿 ETF × 觸發跌幅）
+// ══════════════════════════════════════════════════════════════════
+function onTab1Optimize() {
+  const idxT   = document.getElementById('p-idx-ticker').value;
+  const start  = document.getElementById('p-start').value;
+  const end    = document.getElementById('p-end').value;
+  const metric = document.getElementById('p1-opt-metric').value;
+  const progEl    = document.getElementById('p1-opt-prog');
+  const resultsEl = document.getElementById('results');
+
+  if (!ALL_DATA[idxT]) { alert('找不到觸發指數資料'); return; }
+
+  const baseParams = {
+    dcaAmount:      +document.getElementById('p-dca').value,
+    deploy:         +document.getElementById('p-deploy').value,
+    reserve:        +document.getElementById('p-reserve').value,
+    rebalBandPct:   +document.getElementById('p-rebal').value,
+    rebalReturnPct: +document.getElementById('p-ret').value,
+    rebalPeriod:    +document.getElementById('p-period').value,
+    rebalMode,
+    savingsAPY:     +document.getElementById('p-savings').value,
+  };
+
+  // 觸發跌幅候選
+  const trigPcts = [10, 15, 20, 25, 30, 35, 40];
+
+  // 根據模式決定掃描範圍
+  const fixedMode = _p1OptMode === 'fixed';
+  const validDCA = fixedMode
+    ? [document.getElementById('p-dca-ticker').value].filter(t => ALL_DATA[t])
+    : DCA_TICKERS.filter(t => ALL_DATA[t]);
+  const validLEV = fixedMode
+    ? [document.getElementById('p-lev-ticker').value].filter(t => ALL_DATA[t])
+    : LEVER_TICKERS.filter(t => ALL_DATA[t]);
+
+  const combos = [];
+  validDCA.forEach(dcaT => validLEV.forEach(levT => trigPcts.forEach(trig => combos.push({dcaT,levT,trig}))));
+
+  if (progEl) progEl.textContent = `🔍 ${fixedMode?'📌 固定標的':'🌐 全方面'}掃描中... 共 ${combos.length} 組`;
+  if (resultsEl) resultsEl.innerHTML =
+    `<div style="text-align:center;padding:60px 20px;color:var(--muted)">🔍 搜尋最優組合中...<br>
+     <span style="font-size:12px">共 ${combos.length} 組，請稍候</span></div>`;
+
+  const metricLabel = {calmar:'Calmar Ratio',cagr:'年化報酬 CAGR',ret:'總報酬率',minDD:'最小回撤'};
+  function _p1MVal(r) {
+    if (metric==='calmar') return r.calmar;
+    if (metric==='cagr')   return r.cagr;
+    if (metric==='ret')    return r.ret;
+    if (metric==='minDD')  return -Math.abs(r.maxDD);
+    return r.calmar;
+  }
+
+  setTimeout(() => {
+    const results = [];
+    for (const {dcaT,levT,trig} of combos) {
+      try {
+        const aligned = alignDates(dcaT, levT, idxT, start, end);
+        if (aligned.dates.length < 60) continue;
+        const params = {...baseParams, triggerPct:trig};
+        const res   = runSimulation(aligned, params);
+        const stats = calcStats(res, params);
+        if (!stats || stats.totalInv < 1) continue;
+
+        const years = stats.nDays / 252;
+        const cagr = years > 0.5
+          ? (Math.pow(stats.totalFinal / Math.max(1, stats.totalInv), 1/years) - 1) * 100
+          : 0;
+        let maxDD = 0;
+        stats.combDd.forEach(v => { if (v < maxDD) maxDD = v; });
+        const calmar = Math.abs(maxDD) > 0.1 ? cagr / Math.abs(maxDD) : (cagr > 0 ? 99 : 0);
+
+        results.push({ dcaT, levT, trig,
+          cagr:   +cagr.toFixed(2),
+          ret:    stats.totalRet,
+          maxDD:  +maxDD.toFixed(2),
+          calmar: +calmar.toFixed(3),
+          triggered: stats.triggered });
+      } catch(_) {}
+    }
+
+    if (!results.length) {
+      if (progEl) progEl.textContent = '❌ 無有效結果（共同交易日不足）';
+      if (resultsEl) resultsEl.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">❌ 無法取得有效結果，請確認日期範圍</div>`;
+      return;
+    }
+
+    results.sort((a,b) => _p1MVal(b) - _p1MVal(a));
+    const top10 = results.slice(0,10);
+    const best  = top10[0];
+
+    if (progEl) progEl.textContent = `✅ 完成，${results.length} 組有效（優化目標：${metricLabel[metric]}）`;
+
+    const shortLbl = t => (LABELS[t]||t).split(' ')[0];
+
+    const rows = top10.map((r,i) => {
+      const isGold = i === 0;
+      const mv = _p1MVal(r);
+      const mvStr = metric==='minDD' ? r.maxDD.toFixed(1)+'%' : mv.toFixed(metric==='ret'?1:3);
+      return `<tr style="${isGold?'background:rgba(255,215,0,.06)':''}cursor:pointer"
+        onclick="p1ApplyCombo('${r.dcaT}','${r.levT}',${r.trig})" title="點擊套用此設定">
+        <td style="padding:4px 6px;text-align:center">${isGold?'🥇':i+1}</td>
+        <td style="padding:4px 6px;font-size:11px">${shortLbl(r.dcaT)}</td>
+        <td style="padding:4px 6px;font-size:11px">${shortLbl(r.levT)}</td>
+        <td style="padding:4px 6px;text-align:center;color:var(--orange)">-${r.trig}%</td>
+        <td style="padding:4px 6px;text-align:right;color:var(--green)">${r.cagr>=0?'+':''}${r.cagr.toFixed(1)}%</td>
+        <td style="padding:4px 6px;text-align:right;color:var(--red)">${r.maxDD.toFixed(1)}%</td>
+        <td style="padding:4px 6px;text-align:right;color:${r.calmar>0.3?'var(--green)':'var(--muted)'}">${r.calmar.toFixed(3)}</td>
+        <td style="padding:4px 6px;text-align:right">${r.ret>=0?'+':''}${r.ret.toFixed(1)}%</td>
+        <td style="padding:4px 6px;text-align:center;font-size:10px;color:${r.triggered?'var(--green)':'var(--muted)'}">${r.triggered?'✅':'—'}</td>
+      </tr>`;
+    }).join('');
+
+    if (resultsEl) resultsEl.innerHTML = `
+      <div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:12px 14px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#e3b341;margin-bottom:8px">🏆 最優組合（依 ${metricLabel[metric]} 排序）</div>
+        <div style="font-size:12px;line-height:2;color:var(--text)">
+          📈 定投標的：<b>${LABELS[best.dcaT]||best.dcaT}</b><br>
+          ⚡ 槓桿 ETF：<b>${LABELS[best.levT]||best.levT}</b><br>
+          📉 觸發跌幅：<b style="color:var(--orange)">-${best.trig}%</b>
+        </div>
+        <div style="font-size:12px;margin-top:6px;color:var(--muted)">
+          CAGR ${best.cagr>=0?'+':''}${best.cagr.toFixed(1)}%
+          MaxDD ${best.maxDD.toFixed(1)}%
+          Calmar ${best.calmar.toFixed(3)}
+          總報酬 ${best.ret>=0?'+':''}${best.ret.toFixed(1)}%
+        </div>
+        <button onclick="p1ApplyCombo('${best.dcaT}','${best.levT}',${best.trig})"
+          style="margin-top:10px;background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);border-radius:5px;color:#e3b341;padding:6px 14px;cursor:pointer;font-weight:700;font-size:12px">
+          ▶ 套用並執行回測
+        </button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+        前 10 名（觸發指數：${idxT}，點擊任一行套用設定）
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="padding:4px 6px">#</th>
+            <th style="padding:4px 6px;text-align:left">定投</th>
+            <th style="padding:4px 6px;text-align:left">槓桿</th>
+            <th style="padding:4px 6px;text-align:center">觸發%</th>
+            <th style="padding:4px 6px;text-align:right">CAGR</th>
+            <th style="padding:4px 6px;text-align:right">MaxDD</th>
+            <th style="padding:4px 6px;text-align:right">Calmar</th>
+            <th style="padding:4px 6px;text-align:right">總報酬</th>
+            <th style="padding:4px 6px;text-align:center">觸發</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.8">
+        ※ 掃描範圍：定投 ${validDCA.length} 支 × 槓桿 ${validLEV.length} 支 × 觸發 -10%～-40%（共 ${results.length} 有效組合）<br>
+        ※ 金額、再平衡模式沿用左側目前設定；觸發指數固定為 ${idxT}
+      </div>`;
+  }, 50);
+}
+
+function p1ApplyCombo(dcaT, levT, trig) {
+  const dcaSel = document.getElementById('p-dca-ticker');
+  const levSel = document.getElementById('p-lev-ticker');
+  if (dcaSel) dcaSel.value = dcaT;
+  if (levSel) levSel.value = levT;
+  document.getElementById('p-trigger').value = trig;
+  document.getElementById('p-trigger-r').value = trig;
+  document.getElementById('p-trigger-v').textContent = trig + '%';
+  try { detectCurrency(); } catch(_) {}
+  showToast('✅ 已套用：' + (LABELS[dcaT]||dcaT) + ' + ' + (LABELS[levT]||levT) + '，觸發 -' + trig + '%，正在回測...');
+  onRun();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 分頁二：一鍵同步至分頁三（支援固定標的 / 全方面兩種模式）
+// ══════════════════════════════════════════════════════════════════
+function tab2QuickOpt(mode = 'fixed') {
+  // 把 Tab 2 目前的設定同步到 Tab 3 對應欄位
+  const d2Ticker = document.getElementById('d-ticker')?.value;
+  const d2Ref    = document.getElementById('d-ref-ticker')?.value;
+  const d2Start  = document.getElementById('d-start')?.value;
+  const d2End    = document.getElementById('d-end')?.value;
+  const d2Dca    = document.getElementById('d-dca-amt')?.value;
+
+  if (d2Ticker) {
+    const el = document.getElementById('opt-ticker');
+    if (el) el.value = d2Ticker;
+  }
+  const optRef = document.getElementById('opt-ref-ticker');
+  if (optRef && d2Ref !== undefined) optRef.value = d2Ref;
+
+  const optStart = document.getElementById('opt-start');
+  if (optStart && d2Start) optStart.value = d2Start;
+
+  const optEnd = document.getElementById('opt-end');
+  if (optEnd && d2End) optEnd.value = d2End;
+
+  const optDca = document.getElementById('opt-dca');
+  if (optDca && d2Dca) optDca.value = d2Dca;
+
+  // 層數與 Tab 2 同步（max 3）
+  const nLayers = Math.min(dipLevels.length || 1, 3);
+  const layerRadio = document.querySelector(`input[name="opt-layers"][value="${nLayers}"]`);
+  if (layerRadio) { layerRadio.checked = true; try { onOptLayersChange(); } catch(_) {} }
+
+  switchTab(3);
+  const modeLabel = mode === 'all' ? '🌐 全方面' : '📌 固定標的';
+  showToast(`✅ 已同步設定至 Tab 3，${modeLabel}掃描即將啟動...`);
+  setTimeout(() => {
+    try {
+      if (mode === 'all') runTab3FullSweep();
+      else runOptSweep();
+    } catch(e) { console.warn('tab2QuickOpt sweep:', e); }
+  }, 300);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 分頁三：全方面掃描（所有標的 × 閾值 × 冷卻）
+// ══════════════════════════════════════════════════════════════════
+function runTab3FullSweep() {
+  const sd       = new Date(document.getElementById('opt-start').value);
+  const ed       = new Date(document.getElementById('opt-end').value);
+  const dcaAmt   = +document.getElementById('opt-dca').value || 3000;
+  const metric   = document.getElementById('opt-metric').value;
+  const numLayers= +document.querySelector('input[name="opt-layers"]:checked')?.value || 1;
+  const minThr   = Math.max(5,  +document.getElementById('opt-thr-min').value || 15);
+  const maxThr   = Math.min(95, +document.getElementById('opt-thr-max').value || 90);
+  const singleShot = document.getElementById('opt-single-shot').checked;
+  const tpRetPct = +document.getElementById('opt-tp-ret').value || 50;
+  const tpReinvestMonths = +document.getElementById('opt-tp-reinvest-months').value || 12;
+  const optRefVal = document.getElementById('opt-ref-ticker')?.value || '';
+
+  // 各層低接金額
+  const dipAmts = [];
+  for (let i = 0; i < numLayers; i++) {
+    const el = document.getElementById('opt-amt-' + (i+1));
+    dipAmts.push(dcaAmt * (+(el?.value) || OPT_AMT_DEFAULTS[i] || 10));
+  }
+
+  // 全方面掃描用步進 10%（避免過慢），固定掃描用 5%
+  const step = 10;
+  const thresholds = [];
+  for (let t = minThr; t <= maxThr; t += step) thresholds.push(t);
+
+  // 冷卻：全方面只掃 3 個關鍵值
+  const cooldowns = singleShot ? [99999] : [60, 180, 365];
+
+  // 生成組合
+  let combos;
+  if (numLayers > 1) {
+    const tuples = genCombinations(thresholds, numLayers);
+    combos = [];
+    cooldowns.forEach(cd => tuples.forEach(t => combos.push({thrs:t, cd})));
+  } else {
+    combos = [];
+    cooldowns.forEach(cd => thresholds.forEach(t => combos.push({thrs:[t], cd})));
+  }
+
+  // 所有可用投資標的（DCA + 槓桿，排除純指數和 USD）
+  const SKIP_T = new Set([...INDEX_TICKERS, 'USD']);
+  const tickers = [...new Set([...DCA_TICKERS, ...LEVER_TICKERS])]
+    .filter(t => !SKIP_T.has(t) && (ALL_DATA[t] || (typeof EXTENDED_DATA!=='undefined' && EXTENDED_DATA[t])));
+
+  const resultsEl = document.getElementById('opt-results');
+  resultsEl.innerHTML = `<div style="text-align:center;padding:50px 20px;color:var(--muted)">
+    🌐 全方面掃描中...<br>
+    <span style="font-size:12px">${tickers.length} 支標的 × ${combos.length} 組設定 = 最多 ${tickers.length * combos.length} 次模擬</span><br>
+    <span style="font-size:11px;opacity:.7">請稍候（通常 3–8 秒）</span>
+  </div>`;
+
+  const baseP = {
+    dcaFreq:'monthly', dcaAmt, lumpSum:0, requireAbove:false,
+    tpMode:'none', tpAction:'none', tpRetPct, tpReinvestMonths, tpKDLevel:80
+  };
+  const metricLabel = {calmar:'Calmar Ratio',cagr:'年化報酬 CAGR',ret:'總報酬率',minDD:'最小回撤'}[metric];
+
+  setTimeout(() => {
+    const allResults = [];
+    const savedLevels = dipLevels;
+
+    for (const ticker of tickers) {
+      const raw = (typeof EXTENDED_DATA!=='undefined' && EXTENDED_DATA[ticker]) || ALL_DATA[ticker];
+      if (!raw) continue;
+      const filt = raw.dates.map((d,i) => ({d, c:raw.closes[i]}))
+        .filter(x => { const dt = new Date(x.d); return dt >= sd && dt <= ed; });
+      if (filt.length < 60) continue;
+      const dates  = filt.map(x => x.d);
+      const closes = filt.map(x => x.c);
+      const refCloses = loadRefCloses(dates, closes, optRefVal);
+
+      for (const {thrs, cd} of combos) {
+        const lv = thrs.map((t, li) => ({
+          type:'ath', athPct:t,
+          amount: dipAmts[li] ?? dipAmts[0],
+          cooldownDays: singleShot ? 99999 : cd
+        }));
+        const ind = buildIndicators(refCloses, lv);
+        dipLevels = lv;
+        const sim = simStrategy(dates, closes, baseP, 'dcaDip', ind, refCloses);
+        dipLevels = savedLevels;
+        const stats = calcStats2(sim.log, sim.trades, dates.length);
+        if (!stats || stats.totalInv < 1) continue;
+        allResults.push({ ticker, thrs, cd, ...stats });
+      }
+    }
+
+    dipLevels = savedLevels;
+
+    if (!allResults.length) {
+      resultsEl.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">❌ 無有效結果，請確認日期範圍與標的資料</div>`;
+      return;
+    }
+
+    allResults.sort((a, b) => _optMetricVal(b, metric) - _optMetricVal(a, metric));
+    const top10 = allResults.slice(0, 10);
+    const best  = top10[0];
+
+    const rows = top10.map((r, i) => {
+      const isGold = i === 0;
+      const thrStr = r.thrs.map((t, li) =>
+        `<span style="color:${LEVEL_COLORS[li%LEVEL_COLORS.length]};font-weight:700">-${t}%</span>`
+      ).join(' ');
+      const mv = _optMetricVal(r, metric);
+      const mvStr = metric==='minDD' ? r.maxDD.toFixed(1)+'%' : mv.toFixed(2);
+      return `<tr style="${isGold?'background:rgba(255,215,0,.06)':''}cursor:pointer"
+        onclick="t3FullApply('${r.ticker}',${JSON.stringify(r.thrs)},${r.cd})" title="點擊套用並切到 Tab 2 詳細分析">
+        <td style="padding:4px 6px;text-align:center">${isGold?'🥇':i+1}</td>
+        <td style="padding:4px 6px;font-size:11px;color:var(--blue)">${(LABELS[r.ticker]||r.ticker).split(' ')[0]}</td>
+        <td style="padding:4px 6px">${thrStr}</td>
+        <td style="padding:4px 6px;text-align:right;color:var(--muted)">${r.cd===99999?'單筆':r.cd+'天'}</td>
+        <td style="padding:4px 6px;text-align:right;color:var(--green)">${r.cagr>=0?'+':''}${r.cagr.toFixed(1)}%</td>
+        <td style="padding:4px 6px;text-align:right;color:var(--red)">${r.maxDD.toFixed(1)}%</td>
+        <td style="padding:4px 6px;text-align:right;color:${(r.calmar??0)>0.3?'var(--green)':'var(--muted)'}">${r.calmar!=null?r.calmar.toFixed(3):'N/A'}</td>
+        <td style="padding:4px 6px;text-align:right">${r.ret>=0?'+':''}${r.ret.toFixed(1)}%</td>
+      </tr>`;
+    }).join('');
+
+    const bestLbl = LABELS[best.ticker] || best.ticker;
+    resultsEl.innerHTML = `
+      <div style="background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:12px 14px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#e3b341;margin-bottom:8px">🏆 全方面最優（依 ${metricLabel} 排序）</div>
+        <div style="font-size:12px;line-height:2">
+          📈 標的：<b>${bestLbl}</b><br>
+          📉 閾值：<b>${best.thrs.map(t=>'-'+t+'%').join(' / ')}</b>
+          冷卻：<b>${best.cd===99999?'單筆':best.cd+'天'}</b>
+        </div>
+        <div style="font-size:12px;margin-top:4px;color:var(--muted)">
+          CAGR ${best.cagr>=0?'+':''}${best.cagr.toFixed(1)}%　MaxDD ${best.maxDD.toFixed(1)}%
+          Calmar ${best.calmar?.toFixed(3)||'N/A'}　總報酬 ${best.ret>=0?'+':''}${best.ret.toFixed(1)}%
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="t3FullApply('${best.ticker}',${JSON.stringify(best.thrs)},${best.cd})"
+            style="background:rgba(255,215,0,.15);border:1px solid rgba(255,215,0,.3);border-radius:5px;color:#e3b341;padding:6px 14px;cursor:pointer;font-weight:700;font-size:12px">
+            ▶ 套用到 Tab 2 詳細分析
+          </button>
+          <button onclick="(function(){document.getElementById('opt-ticker').value='${best.ticker}';runOptSweep();})()"
+            style="background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);border-radius:5px;color:var(--blue);padding:6px 14px;cursor:pointer;font-size:12px">
+            🔍 以此標的做固定掃描
+          </button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">
+        前 10 名（${tickers.length} 支標的 × ${combos.length} 組設定，不停利基準，點擊套用）
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+            <th style="padding:4px 6px">#</th>
+            <th style="padding:4px 6px;text-align:left">標的</th>
+            <th style="padding:4px 6px;text-align:left">閾值</th>
+            <th style="padding:4px 6px;text-align:right">冷卻</th>
+            <th style="padding:4px 6px;text-align:right">CAGR</th>
+            <th style="padding:4px 6px;text-align:right">MaxDD</th>
+            <th style="padding:4px 6px;text-align:right">Calmar</th>
+            <th style="padding:4px 6px;text-align:right">總報酬</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">
+        ※ 全方面掃描：不含停利比較（基準＝不停利），找到最優標的後可用「固定標的掃描」做完整停利比較<br>
+        ※ 閾值步進 ${step}%，冷卻候選：${cooldowns.map(c=>c===99999?'單筆':c+'天').join('/')}
+      </div>`;
+  }, 80);
+}
+
+function t3FullApply(ticker, thrs, cd) {
+  const dcaAmt = +document.getElementById('opt-dca').value || 3000;
+  const numLayers = thrs.length;
+
+  // 同步層數
+  const layerRadio = document.querySelector(`input[name="opt-layers"][value="${Math.min(numLayers,3)}"]`);
+  if (layerRadio) { layerRadio.checked = true; try { onOptLayersChange(); } catch(_) {} }
+
+  // 建立每層金額陣列
+  const dipAmtsArr = thrs.map((_, i) => {
+    const el = document.getElementById('opt-amt-' + (i+1));
+    return +(el?.value || OPT_AMT_DEFAULTS[i] || 10) * dcaAmt;
+  });
+
+  // 套用到 Tab 2
+  applyOptMultiToTab2(
+    ticker,
+    encodeURIComponent(JSON.stringify(thrs)),
+    cd === 99999 ? 99999 : cd,
+    dcaAmt,
+    encodeURIComponent(JSON.stringify(dipAmtsArr)),
+    document.getElementById('opt-start').value,
+    document.getElementById('opt-end').value,
+    'none', 50
+  );
+
+  showToast('✅ 已套用：' + (LABELS[ticker]||ticker) + ' 閾值 ' + thrs.map(t=>'-'+t+'%').join('/') + '，切換至 Tab 2');
+  switchTab(2);
+  setTimeout(() => { try { onDCADipRun(); } catch(_) {} }, 200);
+}
 
 // ══════════════════════════════════════════════════════════════════
 // 自動更新價格資料（Yahoo Finance → CORS Proxy → localStorage 快取）
